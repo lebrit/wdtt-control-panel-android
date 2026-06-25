@@ -11,10 +11,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -52,12 +53,12 @@ class PanelApiClient {
             payload = payload,
             auth = false,
         ).jsonObject
-        val token = result["token"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val token = result.text("token")
         if (token.isBlank()) {
             throw ApiException("Сервер не вернул токен")
         }
         val server = result["server"]?.jsonObject ?: JsonObject(emptyMap())
-        val version = server["panel_version"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val version = server.text("panel_version")
         return LoginResult(token = token, version = version)
     }
 
@@ -106,7 +107,7 @@ class PanelApiClient {
                 .getOrElse { throw ApiException("Сервер вернул не JSON: HTTP ${response.code}") }
             val ok = root["ok"]?.jsonPrimitive?.booleanOrNull ?: it.isSuccessful
             if (!it.isSuccessful || !ok) {
-                val error = root["error"]?.jsonPrimitive?.contentOrNull ?: "HTTP ${it.code}"
+                val error = root.text("error").ifBlank { "HTTP ${it.code}" }
                 throw ApiException(error)
             }
             root["result"] ?: root
@@ -154,3 +155,10 @@ data class LoginResult(
 )
 
 class ApiException(message: String) : RuntimeException(message)
+
+private fun JsonObject.text(key: String): String =
+    when (val value = this[key]) {
+        null, JsonNull -> ""
+        is JsonPrimitive -> value.content
+        else -> ""
+    }

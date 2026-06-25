@@ -21,7 +21,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.intOrNull
@@ -317,7 +319,7 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
                 password = obj.text("password"),
                 label = obj.text("label"),
                 deviceId = obj.text("device_id"),
-                deviceIp = device.text("ip"),
+                deviceIp = device?.text("ip").orEmpty(),
                 expiresAt = obj.long("expires_at"),
                 downBytes = obj.long("down_bytes"),
                 upBytes = obj.long("up_bytes"),
@@ -329,7 +331,7 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
         }
 
     private fun parseLogs(root: JsonObject): List<String> =
-        root.array("lines").mapNotNull { it.jsonPrimitive.contentOrNull }
+        root.array("lines").mapNotNull { it.asTextOrNull() }
 
     private fun now(): Long = System.currentTimeMillis()
 }
@@ -341,7 +343,7 @@ private fun JsonObject.objOrNull(key: String): JsonObject? = this[key] as? JsonO
 private fun JsonObject.array(key: String): JsonArray = this[key] as? JsonArray ?: JsonArray(emptyList())
 
 private fun JsonObject.text(key: String, default: String = ""): String =
-    this[key]?.jsonPrimitive?.contentOrNull ?: default
+    this[key].asTextOrNull() ?: default
 
 private fun JsonObject.int(key: String, default: Int = 0): Int =
     this[key]?.jsonPrimitive?.intOrNull ?: default
@@ -351,3 +353,10 @@ private fun JsonObject.long(key: String, default: Long = 0): Long =
 
 private fun JsonObject.bool(key: String, default: Boolean = false): Boolean =
     this[key]?.jsonPrimitive?.booleanOrNull ?: default
+
+private fun JsonElement?.asTextOrNull(): String? =
+    when (this) {
+        null, JsonNull -> null
+        is JsonPrimitive -> content
+        else -> null
+    }
