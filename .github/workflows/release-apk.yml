@@ -1,0 +1,87 @@
+name: Build Signed Release APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Grant gradlew permissions
+        run: chmod +x ./gradlew
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease
+
+      - name: Create temporary signing key
+        run: |
+          keytool -genkeypair \
+            -v \
+            -keystore release-temp.jks \
+            -storepass android \
+            -keypass android \
+            -alias release \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=WDTT Panel, OU=WDTT, O=lebrit, L=Irkutsk, ST=Irkutsk, C=RU"
+
+      - name: Find unsigned APK
+        id: apk
+        shell: bash
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "No release APK found"
+            exit 1
+          fi
+          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Align APK
+        run: |
+          ZIPALIGN="$ANDROID_HOME/build-tools/36.0.0/zipalign"
+          "$ZIPALIGN" -f -p 4 "${{ steps.apk.outputs.apk_path }}" app-release-aligned.apk
+
+      - name: Sign APK
+        run: |
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          "$APKSIGNER" sign \
+            --ks release-temp.jks \
+            --ks-key-alias release \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out wdtt-panel-release-signed.apk \
+            app-release-aligned.apk
+          "$APKSIGNER" verify --verbose wdtt-panel-release-signed.apk
+
+      - name: Upload signed release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: wdtt-panel-release-signed
+          path: wdtt-panel-release-signed.apk
+
+      - name: Upload unsigned release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: wdtt-panel-release-unsigned
+          path: app/build/outputs/apk/release/*.apk
