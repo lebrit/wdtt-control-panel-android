@@ -1,8 +1,23 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
+
+val releaseSigningProperties = Properties()
+val releaseSigningPropertiesFile = rootProject.file("signing/signing.properties")
+if (releaseSigningPropertiesFile.isFile) {
+    releaseSigningPropertiesFile.inputStream().use(releaseSigningProperties::load)
+}
+
+fun releaseSigningValue(name: String): String? =
+    providers.gradleProperty(name).orNull
+        ?: releaseSigningProperties.getProperty(name)
+
+val hasReleaseSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+    .all { !releaseSigningValue(it).isNullOrBlank() }
 
 android {
     namespace = "com.lebrit.wdttpanel"
@@ -12,8 +27,27 @@ android {
         applicationId = "com.lebrit.wdttpanel"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = rootProject.file(releaseSigningValue("storeFile").orEmpty())
+                storePassword = releaseSigningValue("storePassword")
+                keyAlias = releaseSigningValue("keyAlias")
+                keyPassword = releaseSigningValue("keyPassword")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
     }
 
     buildFeatures {

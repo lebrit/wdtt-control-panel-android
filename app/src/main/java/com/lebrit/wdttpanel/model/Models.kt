@@ -35,12 +35,21 @@ data class OverviewSummary(
     val total: Int = 0,
     val users: Int = 0,
     val devices: Int = 0,
+    val onlineDevices: Int = 0,
     val uploadGb: String = "0",
     val downloadGb: String = "0",
+    val nat: String = "",
+    val uptime: String = "",
     val cpuPercent: String = "-",
     val memoryPercent: String = "-",
     val diskPercent: String = "-",
     val serviceActive: Boolean = false,
+    val serviceExists: Boolean = false,
+    val binaryExists: Boolean = false,
+    val ipForward: String = "",
+    val publicHost: String = "",
+    val tlsMode: String = "",
+    val httpsPort: Int = 443,
 )
 
 data class UserSummary(
@@ -55,12 +64,53 @@ data class UserSummary(
     val ports: String,
     val deactivated: Boolean,
     val expired: Boolean,
+    val connected: Boolean = false,
+    val lastHandshake: Long = 0L,
 ) {
     val displayName: String
         get() = label.ifBlank { password }
 
-    val connected: Boolean
+    val bound: Boolean
         get() = deviceId.isNotBlank()
+
+    val totalBytes: Long
+        get() = downBytes + upBytes
+}
+
+data class ServiceUnitStatus(
+    val unit: String,
+    val active: Boolean,
+)
+
+data class LogsMeta(
+    val source: String = "wdtt",
+    val title: String = "Журнал WDTT",
+    val units: List<ServiceUnitStatus> = emptyList(),
+)
+
+data class GeneratedLinks(
+    val title: String,
+    val links: String,
+)
+
+enum class UserBulkAction {
+    Activate,
+    Deactivate,
+    SetExpiration,
+    ResetTraffic,
+    Unbind,
+    Delete,
+}
+
+enum class HashMode {
+    Shared,
+    Rotate,
+}
+
+enum class CreateUserMode {
+    Manual,
+    Auto,
+    Bulk,
 }
 
 enum class AppTab {
@@ -78,6 +128,8 @@ data class AppUiState(
     val overview: OverviewSummary? = null,
     val users: List<UserSummary> = emptyList(),
     val logs: List<String> = emptyList(),
+    val logsMeta: LogsMeta = LogsMeta(),
+    val generatedLinks: GeneratedLinks? = null,
     val message: String? = null,
     val error: String? = null,
 ) {

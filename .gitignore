@@ -5,3 +5,9 @@ build/
 local.properties
 captures/
 app/build/
+signing/
+*.jks
+*.keystore
+*.p12
+*.base64
+signing.properties

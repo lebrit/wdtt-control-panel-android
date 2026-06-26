@@ -9,10 +9,16 @@ import com.lebrit.wdttpanel.data.SecureServerStore
 import com.lebrit.wdttpanel.model.AppTab
 import com.lebrit.wdttpanel.model.AppUiState
 import com.lebrit.wdttpanel.model.ConnectionStatus
+import com.lebrit.wdttpanel.model.GeneratedLinks
+import com.lebrit.wdttpanel.model.HashMode
+import com.lebrit.wdttpanel.model.LogsMeta
 import com.lebrit.wdttpanel.model.OverviewSummary
 import com.lebrit.wdttpanel.model.ServerProfile
+import com.lebrit.wdttpanel.model.ServiceUnitStatus
 import com.lebrit.wdttpanel.model.StoredState
+import com.lebrit.wdttpanel.model.UserBulkAction
 import com.lebrit.wdttpanel.model.UserSummary
+import java.net.URI
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -59,6 +65,10 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(message = null, error = null) }
     }
 
+    fun clearGeneratedLinks() {
+        _state.update { it.copy(generatedLinks = null) }
+    }
+
     fun refresh() {
         val profile = _state.value.activeServer ?: return
         viewModelScope.launch {
@@ -67,7 +77,9 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
                 val authed = ensureAuthenticated(profile)
                 val overview = parseOverview(api.overview(authed))
                 val users = parseUsers(api.users(authed))
-                val logs = parseLogs(api.logs(authed))
+                val logsRoot = api.logs(authed, source = _state.value.logsMeta.source)
+                val logs = parseLogs(logsRoot)
+                val logsMeta = parseLogsMeta(logsRoot)
                 val checked = authed.copy(lastStatus = ConnectionStatus.Online, lastCheckedAt = now())
                 replaceAndPersist(checked)
                 _state.update {
@@ -76,6 +88,7 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
                         overview = overview,
                         users = users,
                         logs = logs,
+                        logsMeta = logsMeta,
                         error = null,
                     )
                 }
@@ -87,6 +100,31 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
                     it.copy(
                         loading = false,
                         error = error.message ?: "Не удалось обновить сервер",
+                    )
+                }
+            }
+        }
+    }
+
+    fun loadLogs(source: String, limit: Int) {
+        val profile = _state.value.activeServer ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(loading = true, error = null) }
+            runCatching {
+                val authed = ensureAuthenticated(profile)
+                val root = api.logs(authed, source = source, limit = limit)
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        logs = parseLogs(root),
+                        logsMeta = parseLogsMeta(root),
+                    )
+                }
+            }.onFailure { error ->
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        error = error.message ?: "Не удалось загрузить журнал",
                     )
                 }
             }
@@ -193,18 +231,79 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun createUser(label: String, vkHash: String, ports: String, days: String, unlimited: Boolean) {
+    fun createUser(
+        label: String,
+        password: String,
+        vkHash: String,
+        ports: String,
+        days: String,
+        unlimited: Boolean,
+        disabled: Boolean,
+    ) {
         val payload = buildJsonObject {
             put("label", label)
+            if (password.isNotBlank()) {
+                put("password", password)
+            }
             put("vk_hash", vkHash)
             put("ports", ports.ifBlank { "56000,56001,9000" })
+            put("is_deactivated", disabled)
             if (unlimited) {
                 put("unlimited", true)
             } else {
                 put("days", days.toIntOrNull() ?: 30)
             }
         }
-        postUserAction("users/create", payload, "Пользователь создан")
+        postAction("users/create", payload, "Пользователь создан") { result, profile ->
+            val user = result as? JsonObject ?: return@postAction
+            _state.update {
+                it.copy(generatedLinks = GeneratedLinks("Ссылка пользователя", quickLinks(listOf(user), profile)))
+            }
+        }
+    }
+
+    fun createAutoUser(label: String) {
+        val payload = buildJsonObject { put("label", label) }
+        postAction("users/create-auto", payload, "Пользователь создан автоматически") { result, profile ->
+            val user = result as? JsonObject ?: return@postAction
+            _state.update {
+                it.copy(generatedLinks = GeneratedLinks("Ссылка пользователя", quickLinks(listOf(user), profile)))
+            }
+        }
+    }
+
+    fun createUsersBulk(
+        count: Int,
+        vkHash: String,
+        hashMode: HashMode,
+        labelPrefix: String,
+        ports: String,
+        days: String,
+        unlimited: Boolean,
+        disabled: Boolean,
+    ) {
+        val payload = buildJsonObject {
+            put("count", count.coerceIn(1, 10))
+            put("vk_hash", vkHash)
+            put("hash_mode", if (hashMode == HashMode.Rotate) "rotate" else "shared")
+            put("label_prefix", labelPrefix)
+            put("ports", ports.ifBlank { "56000,56001,9000" })
+            put("is_deactivated", disabled)
+            if (unlimited) {
+                put("unlimited", true)
+            } else {
+                put("days", days.toIntOrNull() ?: 30)
+            }
+        }
+        postAction("users/create-bulk", payload, "Пользователи созданы") { result, profile ->
+            val root = result as? JsonObject ?: return@postAction
+            val users = root.array("users").mapNotNull { it as? JsonObject }
+            if (users.isNotEmpty()) {
+                _state.update {
+                    it.copy(generatedLinks = GeneratedLinks("Ссылки пользователей", quickLinks(users, profile)))
+                }
+            }
+        }
     }
 
     fun deleteUser(user: UserSummary) {
@@ -228,18 +327,51 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
         postUserAction("users/update", payload, if (enabled) "Пользователь активирован" else "Пользователь отключён")
     }
 
+    fun bulkUserAction(action: UserBulkAction, passwords: List<String>, days: String) {
+        if (passwords.isEmpty()) {
+            _state.update { it.copy(error = "Выберите пользователей") }
+            return
+        }
+        val actionValue = when (action) {
+            UserBulkAction.Activate -> "activate"
+            UserBulkAction.Deactivate -> "deactivate"
+            UserBulkAction.SetExpiration -> "set_expiration"
+            UserBulkAction.ResetTraffic -> "reset_traffic"
+            UserBulkAction.Unbind -> "unbind"
+            UserBulkAction.Delete -> "delete"
+        }
+        val payload = buildJsonObject {
+            put("action", actionValue)
+            put("passwords", JsonArray(passwords.distinct().map { JsonPrimitive(it) }))
+            if (action == UserBulkAction.SetExpiration) {
+                put("days", days.toIntOrNull() ?: 30)
+            }
+        }
+        postUserAction("users/bulk-action", payload, "Массовое действие выполнено")
+    }
+
     fun serviceAction(action: String) {
         val payload = buildJsonObject { put("service_action", action) }
         postUserAction("service", payload, "Команда отправлена")
     }
 
     private fun postUserAction(route: String, payload: JsonObject, success: String) {
+        postAction(route, payload, success)
+    }
+
+    private fun postAction(
+        route: String,
+        payload: JsonObject,
+        success: String,
+        onResult: (JsonElement, ServerProfile) -> Unit = { _, _ -> },
+    ) {
         val profile = _state.value.activeServer ?: return
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
             runCatching {
                 val authed = ensureAuthenticated(profile)
-                api.post(authed, route, payload)
+                val result = api.post(authed, route, payload)
+                onResult(result, authed)
                 _state.update { it.copy(message = success) }
                 refresh()
             }.onFailure { error ->
@@ -302,12 +434,21 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
             total = stats.int("total"),
             users = root.int("users"),
             devices = root.int("devices"),
+            onlineDevices = root.int("online_devices"),
             uploadGb = stats.text("up_gb", "0"),
             downloadGb = stats.text("down_gb", "0"),
+            nat = stats.text("nat"),
+            uptime = stats.text("uptime"),
             cpuPercent = system.text("cpu_percent", "-"),
             memoryPercent = system.obj("memory").text("percent", "-"),
             diskPercent = root.obj("disk").text("percent", "-"),
             serviceActive = root.obj("service").bool("active"),
+            serviceExists = root.obj("service").bool("exists"),
+            binaryExists = root.obj("service").bool("binary"),
+            ipForward = root.obj("service").text("ip_forward"),
+            publicHost = root.text("public_host"),
+            tlsMode = root.text("tls_mode"),
+            httpsPort = root.int("https_port", 443),
         )
     }
 
@@ -327,11 +468,46 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
                 ports = obj.text("ports", "56000,56001,9000"),
                 deactivated = obj.bool("is_deactivated"),
                 expired = obj.bool("expired"),
+                connected = obj.bool("connected"),
+                lastHandshake = obj.long("last_handshake"),
             )
         }
 
     private fun parseLogs(root: JsonObject): List<String> =
         root.array("lines").mapNotNull { it.asTextOrNull() }
+
+    private fun parseLogsMeta(root: JsonObject): LogsMeta =
+        LogsMeta(
+            source = root.text("source", _state.value.logsMeta.source),
+            title = root.text("title", "Журнал WDTT"),
+            units = root.array("units").mapNotNull { item ->
+                val obj = item as? JsonObject ?: return@mapNotNull null
+                ServiceUnitStatus(
+                    unit = obj.text("unit"),
+                    active = obj.bool("active"),
+                )
+            },
+        )
+
+    private fun quickLinks(users: List<JsonObject>, profile: ServerProfile): String =
+        users.joinToString("\n") { user ->
+            val ports = user.text("ports", "56000,56001,9000")
+                .split(",")
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+            val host = runCatching { URI(profile.baseUrl).host }
+                .getOrNull()
+                .orEmpty()
+                .ifBlank { profile.baseUrl.removePrefix("https://").removePrefix("http://").trimEnd('/') }
+            listOf(
+                "wdtt://$host",
+                ports.getOrElse(0) { "56000" },
+                ports.getOrElse(1) { "56001" },
+                ports.getOrElse(2) { "9000" },
+                user.text("password"),
+                user.text("vk_hash"),
+            ).joinToString(":")
+        }
 
     private fun now(): Long = System.currentTimeMillis()
 }

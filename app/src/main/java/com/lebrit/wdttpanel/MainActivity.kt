@@ -3,6 +3,8 @@ package com.lebrit.wdttpanel
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,41 +16,71 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -57,10 +89,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -70,6 +104,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -83,8 +119,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lebrit.wdttpanel.model.AppTab
 import com.lebrit.wdttpanel.model.AppUiState
 import com.lebrit.wdttpanel.model.ConnectionStatus
+import com.lebrit.wdttpanel.model.CreateUserMode
+import com.lebrit.wdttpanel.model.GeneratedLinks
+import com.lebrit.wdttpanel.model.HashMode
+import com.lebrit.wdttpanel.model.LogsMeta
 import com.lebrit.wdttpanel.model.OverviewSummary
 import com.lebrit.wdttpanel.model.ServerProfile
+import com.lebrit.wdttpanel.model.UserBulkAction
 import com.lebrit.wdttpanel.model.UserSummary
 import com.lebrit.wdttpanel.ui.WdttViewModel
 import java.text.SimpleDateFormat
@@ -106,17 +147,27 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun WdttTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = lightColorScheme(
-            primary = androidx.compose.ui.graphics.Color(0xFF0369A1),
-            secondary = androidx.compose.ui.graphics.Color(0xFF0F766E),
-            tertiary = androidx.compose.ui.graphics.Color(0xFF7C3AED),
-            surface = androidx.compose.ui.graphics.Color(0xFFF8FAFC),
-            surfaceVariant = androidx.compose.ui.graphics.Color(0xFFE2E8F0),
-            background = androidx.compose.ui.graphics.Color(0xFFF8FAFC),
-        ),
-        content = content,
-    )
+    val dark = isSystemInDarkTheme()
+    val scheme = if (dark) {
+        darkColorScheme(
+            primary = Color(0xFF7DD3FC),
+            secondary = Color(0xFF5EEAD4),
+            tertiary = Color(0xFFFBBF24),
+            background = Color(0xFF0F172A),
+            surface = Color(0xFF111827),
+            surfaceVariant = Color(0xFF1F2937),
+        )
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF2563EB),
+            secondary = Color(0xFF0F766E),
+            tertiary = Color(0xFFD97706),
+            background = Color(0xFFF4F7FB),
+            surface = Color(0xFFFFFFFF),
+            surfaceVariant = Color(0xFFE5E7EB),
+        )
+    }
+    MaterialTheme(colorScheme = scheme, content = content)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -140,30 +191,29 @@ private fun WdttApp(state: AppUiState, viewModel: WdttViewModel) {
             TopAppBar(
                 title = {
                     Column {
+                        Text("WDTT Panel", fontWeight = FontWeight.SemiBold)
                         Text(
-                            text = state.activeServer?.name ?: "WDTT Panel",
+                            text = state.activeServer?.name ?: "Нет активного сервера",
+                            style = MaterialTheme.typography.labelMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        state.activeServer?.baseUrl?.let {
-                            Text(
-                                text = it,
-                                style = MaterialTheme.typography.labelSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
                     }
                 },
                 actions = {
                     ServerSwitcher(state = state, onSwitch = viewModel::switchServer)
-                    IconButton(onClick = viewModel::refresh, enabled = state.activeServer != null && !state.loading) {
+                    IconButton(
+                        onClick = viewModel::refresh,
+                        enabled = state.activeServer != null && !state.loading,
+                    ) {
                         Icon(Icons.Default.Refresh, contentDescription = "Обновить")
                     }
-                    IconButton(onClick = {
-                        editingServer = null
-                        showServerDialog = true
-                    }) {
+                    IconButton(
+                        onClick = {
+                            editingServer = null
+                            showServerDialog = true
+                        },
+                    ) {
                         Icon(Icons.Default.Add, contentDescription = "Добавить сервер")
                     }
                 },
@@ -176,7 +226,7 @@ private fun WdttApp(state: AppUiState, viewModel: WdttViewModel) {
                         selected = state.selectedTab == item.tab,
                         onClick = { viewModel.selectTab(item.tab) },
                         icon = { Icon(item.icon, contentDescription = item.label) },
-                        label = { Text(item.label) },
+                        label = { Text(item.label, maxLines = 1) },
                     )
                 }
             }
@@ -189,13 +239,20 @@ private fun WdttApp(state: AppUiState, viewModel: WdttViewModel) {
                 .padding(padding),
         ) {
             when {
-                state.servers.isEmpty() -> EmptyServers(onAdd = {
-                    editingServer = null
-                    showServerDialog = true
-                })
+                state.servers.isEmpty() -> EmptyServers(
+                    onAdd = {
+                        editingServer = null
+                        showServerDialog = true
+                    },
+                )
                 state.selectedTab == AppTab.Dashboard -> DashboardScreen(
-                    overview = state.overview,
+                    state = state,
+                    onSwitch = viewModel::switchServer,
                     onService = viewModel::serviceAction,
+                    onAddServer = {
+                        editingServer = null
+                        showServerDialog = true
+                    },
                 )
                 state.selectedTab == AppTab.Users -> UsersScreen(
                     users = state.users,
@@ -204,8 +261,13 @@ private fun WdttApp(state: AppUiState, viewModel: WdttViewModel) {
                     onUnbind = viewModel::unbindUser,
                     onResetTraffic = viewModel::resetTraffic,
                     onSetEnabled = viewModel::setUserEnabled,
+                    onBulk = viewModel::bulkUserAction,
                 )
-                state.selectedTab == AppTab.Logs -> LogsScreen(lines = state.logs)
+                state.selectedTab == AppTab.Logs -> LogsScreen(
+                    lines = state.logs,
+                    meta = state.logsMeta,
+                    onLoad = viewModel::loadLogs,
+                )
                 state.selectedTab == AppTab.Servers -> ServersScreen(
                     state = state,
                     onAdd = {
@@ -220,14 +282,23 @@ private fun WdttApp(state: AppUiState, viewModel: WdttViewModel) {
                     onSwitch = viewModel::switchServer,
                 )
             }
+
             if (state.loading) {
-                Box(
+                Surface(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.TopCenter,
+                        .align(Alignment.TopCenter)
+                        .padding(top = 16.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    tonalElevation = 3.dp,
                 ) {
-                    CircularProgressIndicator()
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Text("Синхронизация", style = MaterialTheme.typography.labelMedium)
+                    }
                 }
             }
         }
@@ -246,11 +317,22 @@ private fun WdttApp(state: AppUiState, viewModel: WdttViewModel) {
     if (showCreateUser) {
         CreateUserDialog(
             onDismiss = { showCreateUser = false },
-            onCreate = { label, hash, ports, days, unlimited ->
+            onCreateManual = { label, password, hash, ports, days, unlimited, disabled ->
                 showCreateUser = false
-                viewModel.createUser(label, hash, ports, days, unlimited)
+                viewModel.createUser(label, password, hash, ports, days, unlimited, disabled)
+            },
+            onCreateAuto = { label ->
+                showCreateUser = false
+                viewModel.createAutoUser(label)
+            },
+            onCreateBulk = { count, hash, hashMode, labelPrefix, ports, days, unlimited, disabled ->
+                showCreateUser = false
+                viewModel.createUsersBulk(count, hash, hashMode, labelPrefix, ports, days, unlimited, disabled)
             },
         )
+    }
+    state.generatedLinks?.let { links ->
+        GeneratedLinksDialog(links = links, onDismiss = viewModel::clearGeneratedLinks)
     }
 }
 
@@ -265,7 +347,17 @@ private fun ServerSwitcher(state: AppUiState, onSwitch: (String) -> Unit) {
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             state.servers.forEach { server ->
                 DropdownMenuItem(
-                    text = { Text(server.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    text = {
+                        Column {
+                            Text(server.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                server.baseUrl,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    },
                     onClick = {
                         expanded = false
                         onSwitch(server.id)
@@ -291,10 +383,28 @@ private fun EmptyServers(onAdd: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(Icons.Default.Storage, contentDescription = null)
-        Spacer(Modifier.height(12.dp))
-        Text("Серверы не добавлены", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(16.dp))
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+        ) {
+            Icon(
+                Icons.Default.Storage,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .padding(18.dp)
+                    .size(38.dp),
+            )
+        }
+        Spacer(Modifier.height(18.dp))
+        Text("Серверы не добавлены", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Добавьте панель WDTT, чтобы видеть состояние сервиса, пользователей и журналы.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(18.dp))
         Button(onClick = onAdd) {
             Icon(Icons.Default.Add, contentDescription = null)
             Spacer(Modifier.width(8.dp))
@@ -303,45 +413,119 @@ private fun EmptyServers(onAdd: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DashboardScreen(overview: OverviewSummary?, onService: (String) -> Unit) {
+private fun DashboardScreen(
+    state: AppUiState,
+    onSwitch: (String) -> Unit,
+    onService: (String) -> Unit,
+    onAddServer: () -> Unit,
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text("Обзор", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            ServerHero(
+                activeServer = state.activeServer,
+                servers = state.servers,
+                overview = state.overview,
+                onSwitch = onSwitch,
+                onAddServer = onAddServer,
+            )
         }
-        if (overview == null) {
-            item { EmptyCard("Нет данных") }
-        } else {
-            item {
-                MetricGrid(
-                    listOf(
-                        "Активные" to "${overview.active}/${overview.total}",
-                        "Пользователи" to overview.users.toString(),
-                        "Устройства" to overview.devices.toString(),
-                        "Вверх" to "${overview.uploadGb} GB",
-                        "Вниз" to "${overview.downloadGb} GB",
-                        "CPU" to "${overview.cpuPercent}%",
-                        "RAM" to "${overview.memoryPercent}%",
-                        "Диск" to "${overview.diskPercent}%",
-                    ),
-                )
+        item { MetricGrid(overview = state.overview) }
+        item { ResourcePanel(overview = state.overview) }
+        item { ServicePanel(overview = state.overview, onService = onService) }
+        item { HealthPanel(overview = state.overview) }
+    }
+}
+
+@Composable
+private fun ServerHero(
+    activeServer: ServerProfile?,
+    servers: List<ServerProfile>,
+    overview: OverviewSummary?,
+    onSwitch: (String) -> Unit,
+    onAddServer: () -> Unit,
+) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Surface(
+                    shape = CircleShape,
+                    color = if (overview?.serviceActive == true) Color(0xFF16A34A) else MaterialTheme.colorScheme.tertiary,
+                ) {
+                    Icon(
+                        if (overview?.serviceActive == true) Icons.Default.Wifi else Icons.Default.WifiOff,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier
+                            .padding(14.dp)
+                            .size(28.dp),
+                    )
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        activeServer?.name ?: "WDTT Panel",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        activeServer?.baseUrl ?: "Сервер не выбран",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                ConnectionStatusChip(activeServer?.lastStatus ?: ConnectionStatus.Unknown)
             }
-            item {
-                Card(shape = RoundedCornerShape(8.dp)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            StatusChip(active = overview.serviceActive)
-                            Spacer(Modifier.weight(1f))
-                        }
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilledTonalButton(onClick = { onService("start") }) { Text("Запустить") }
-                            FilledTonalButton(onClick = { onService("restart") }) { Text("Рестарт") }
-                            OutlinedButton(onClick = { onService("stop") }) { Text("Стоп") }
+
+            FlowStatusRow {
+                if (!activeServer?.version.isNullOrBlank()) {
+                    StatusPill(Icons.Default.Security, "v${activeServer?.version}")
+                }
+                if (!overview?.publicHost.isNullOrBlank()) {
+                    StatusPill(Icons.Default.Dns, overview?.publicHost.orEmpty())
+                }
+                if (!overview?.nat.isNullOrBlank()) {
+                    StatusPill(Icons.Default.Tune, overview?.nat.orEmpty())
+                }
+                if (!overview?.uptime.isNullOrBlank()) {
+                    StatusPill(Icons.Default.History, overview?.uptime.orEmpty())
+                }
+                if ((activeServer?.lastCheckedAt ?: 0L) > 0) {
+                    StatusPill(Icons.Default.Refresh, timeLabel(activeServer?.lastCheckedAt ?: 0L))
+                }
+            }
+
+            if (servers.size > 1) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(servers, key = { it.id }) { server ->
+                        FilterChip(
+                            selected = server.id == activeServer?.id,
+                            onClick = { onSwitch(server.id) },
+                            label = { Text(server.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            leadingIcon = {
+                                Icon(
+                                    if (server.id == activeServer?.id) Icons.Default.CheckCircle else Icons.Default.Storage,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            },
+                        )
+                    }
+                    item {
+                        OutlinedButton(onClick = onAddServer) {
+                            Icon(Icons.Default.Add, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Сервер")
                         }
                     }
                 }
@@ -351,29 +535,154 @@ private fun DashboardScreen(overview: OverviewSummary?, onService: (String) -> U
 }
 
 @Composable
-private fun MetricGrid(items: List<Pair<String, String>>) {
+private fun MetricGrid(overview: OverviewSummary?) {
+    val metrics = listOf(
+        Metric("Активные", overview?.let { "${it.active}/${it.total}" } ?: "-", Icons.Default.Wifi),
+        Metric("Пользователи", overview?.users?.toString() ?: "-", Icons.Default.Groups),
+        Metric("Устройства", overview?.let { "${it.onlineDevices}/${it.devices}" } ?: "-", Icons.Default.Devices),
+        Metric("TX", overview?.let { "${it.uploadGb} GB" } ?: "-", Icons.Default.ArrowUpward),
+        Metric("RX", overview?.let { "${it.downloadGb} GB" } ?: "-", Icons.Default.ArrowDownward),
+        Metric("NAT", overview?.nat?.ifBlank { "-" } ?: "-", Icons.Default.Dns),
+    )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        items.chunked(2).forEach { row ->
+        metrics.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { item ->
-                    MetricCard(label = item.first, value = item.second, modifier = Modifier.weight(1f))
+                row.forEach { metric ->
+                    MetricTile(metric = metric, modifier = Modifier.weight(1f))
                 }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }
 }
 
 @Composable
-private fun MetricCard(label: String, value: String, modifier: Modifier = Modifier) {
+private fun MetricTile(metric: Metric, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium)
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f),
+            ) {
+                Icon(
+                    metric.icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .size(20.dp),
+                )
+            }
+            Column(Modifier.weight(1f)) {
+                Text(metric.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(metric.value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResourcePanel(overview: OverviewSummary?) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionTitle(Icons.Default.Speed, "Ресурсы")
+            ResourceMeter("CPU", overview?.cpuPercent ?: "-", Icons.Default.Speed)
+            ResourceMeter("RAM", overview?.memoryPercent ?: "-", Icons.Default.Memory)
+            ResourceMeter("Диск", overview?.diskPercent ?: "-", Icons.Default.Storage)
+        }
+    }
+}
+
+@Composable
+private fun ResourceMeter(label: String, rawPercent: String, icon: ImageVector) {
+    val fraction = percentFraction(rawPercent)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+            Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+            Text(percentLabel(rawPercent), style = MaterialTheme.typography.labelMedium)
+        }
+        LinearProgressIndicator(
+            progress = { fraction },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp),
+        )
+    }
+}
+
+@Composable
+private fun ServicePanel(overview: OverviewSummary?, onService: (String) -> Unit) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionTitle(Icons.Default.PowerSettingsNew, "Сервис")
+                Spacer(Modifier.weight(1f))
+                AssistChip(
+                    onClick = {},
+                    label = { Text(if (overview?.serviceActive == true) "Работает" else "Остановлен") },
+                    leadingIcon = {
+                        Icon(
+                            if (overview?.serviceActive == true) Icons.Default.CheckCircle else Icons.Default.Warning,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    },
+                )
+            }
+            FlowStatusRow {
+                FilledTonalButton(onClick = { onService("start") }) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Запуск")
+                }
+                FilledTonalButton(onClick = { onService("restart") }) {
+                    Icon(Icons.Default.RestartAlt, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Рестарт")
+                }
+                OutlinedButton(onClick = { onService("stop") }) {
+                    Icon(Icons.Default.Stop, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Стоп")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HealthPanel(overview: OverviewSummary?) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionTitle(Icons.Default.Security, "Проверки")
+            FlowStatusRow {
+                HealthPill("systemd", overview?.serviceExists == true)
+                HealthPill("wdtt-server", overview?.binaryExists == true)
+                HealthPill("IPv4 forwarding", overview?.ipForward == "1")
+                if (!overview?.tlsMode.isNullOrBlank()) StatusPill(Icons.Default.Key, overview?.tlsMode.orEmpty())
+                if ((overview?.httpsPort ?: 443) != 443) StatusPill(Icons.Default.Security, "HTTPS ${overview?.httpsPort}")
+            }
         }
     }
 }
@@ -386,8 +695,42 @@ private fun UsersScreen(
     onUnbind: (UserSummary) -> Unit,
     onResetTraffic: (UserSummary) -> Unit,
     onSetEnabled: (UserSummary, Boolean) -> Unit,
+    onBulk: (UserBulkAction, List<String>, String) -> Unit,
 ) {
+    var search by remember { mutableStateOf("") }
+    var filter by remember { mutableStateOf(UserFilter.All) }
+    var sort by remember { mutableStateOf(UserSort.Name) }
+    var selectedPasswords by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pendingDelete by remember { mutableStateOf<UserSummary?>(null) }
+    var pendingBulk by remember { mutableStateOf<UserBulkAction?>(null) }
+    var bulkDays by remember { mutableStateOf("30") }
+
+    LaunchedEffect(users) {
+        val existing = users.map { it.password }.toSet()
+        selectedPasswords = selectedPasswords.filter { it in existing }.toSet()
+    }
+
+    val filteredUsers = remember(users, search, filter, sort) {
+        users
+            .filter { it.matches(search) }
+            .filter { user ->
+                when (filter) {
+                    UserFilter.All -> true
+                    UserFilter.Online -> user.connected
+                    UserFilter.Bound -> user.bound
+                    UserFilter.Disabled -> user.deactivated
+                    UserFilter.Expired -> user.expired
+                }
+            }
+            .let { list ->
+                when (sort) {
+                    UserSort.Name -> list.sortedBy { it.displayName.lowercase() }
+                    UserSort.Traffic -> list.sortedByDescending { it.totalBytes }
+                    UserSort.Status -> list.sortedWith(compareBy<UserSummary> { !it.connected }.thenBy { it.deactivated }.thenBy { it.displayName.lowercase() })
+                }
+            }
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -395,21 +738,76 @@ private fun UsersScreen(
     ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Пользователи", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.weight(1f))
+                Column(Modifier.weight(1f)) {
+                    Text("Пользователи", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "${users.count { it.connected }} онлайн · ${users.count { it.bound }} привязано · ${users.size} всего",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Button(onClick = onCreate) {
-                    Icon(Icons.Default.Add, contentDescription = null)
+                    Icon(Icons.Default.PersonAdd, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Создать")
                 }
             }
         }
-        if (users.isEmpty()) {
-            item { EmptyCard("Пользователей нет") }
+        item {
+            UserControls(
+                search = search,
+                onSearch = { search = it },
+                filter = filter,
+                onFilter = { filter = it },
+                sort = sort,
+                onSort = { sort = it },
+            )
         }
-        items(users, key = { it.password }) { user ->
+        if (selectedPasswords.isNotEmpty()) {
+            item {
+                BulkActionPanel(
+                    count = selectedPasswords.size,
+                    days = bulkDays,
+                    onDays = { bulkDays = it },
+                    onAction = { pendingBulk = it },
+                    onClear = { selectedPasswords = emptySet() },
+                )
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(
+                    onClick = { selectedPasswords = filteredUsers.map { it.password }.toSet() },
+                    enabled = filteredUsers.isNotEmpty(),
+                ) {
+                    Icon(Icons.Default.SelectAll, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Выбрать")
+                }
+                OutlinedButton(
+                    onClick = { selectedPasswords = emptySet() },
+                    enabled = selectedPasswords.isNotEmpty(),
+                ) {
+                    Icon(Icons.Default.ClearAll, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Снять")
+                }
+            }
+        }
+        if (filteredUsers.isEmpty()) {
+            item { EmptyCard("Пользователей по выбранным условиям нет") }
+        }
+        items(filteredUsers, key = { it.password }) { user ->
             UserCard(
                 user = user,
+                selected = user.password in selectedPasswords,
+                onSelected = { selected ->
+                    selectedPasswords = if (selected) {
+                        selectedPasswords + user.password
+                    } else {
+                        selectedPasswords - user.password
+                    }
+                },
                 onDelete = { pendingDelete = user },
                 onUnbind = { onUnbind(user) },
                 onResetTraffic = { onResetTraffic(user) },
@@ -417,6 +815,7 @@ private fun UsersScreen(
             )
         }
     }
+
     pendingDelete?.let { user ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
@@ -433,76 +832,312 @@ private fun UsersScreen(
             },
         )
     }
+    pendingBulk?.let { action ->
+        AlertDialog(
+            onDismissRequest = { pendingBulk = null },
+            title = { Text(bulkActionTitle(action)) },
+            text = { Text("Пользователей: ${selectedPasswords.size}") },
+            confirmButton = {
+                Button(onClick = {
+                    pendingBulk = null
+                    val passwords = selectedPasswords.toList()
+                    selectedPasswords = emptySet()
+                    onBulk(action, passwords, bulkDays)
+                }) { Text("Выполнить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingBulk = null }) { Text("Отмена") }
+            },
+        )
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun UserCard(
-    user: UserSummary,
-    onDelete: () -> Unit,
-    onUnbind: () -> Unit,
-    onResetTraffic: () -> Unit,
-    onSetEnabled: (Boolean) -> Unit,
+private fun UserControls(
+    search: String,
+    onSearch: (String) -> Unit,
+    filter: UserFilter,
+    onFilter: (UserFilter) -> Unit,
+    sort: UserSort,
+    onSort: (UserSort) -> Unit,
 ) {
-    val clipboard = LocalClipboardManager.current
-    Card(shape = RoundedCornerShape(8.dp)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(user.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(user.password, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedTextField(
+                value = search,
+                onValueChange = onSearch,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Поиск") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                singleLine = true,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                UserFilter.entries.forEach { item ->
+                    FilterChip(
+                        selected = filter == item,
+                        onClick = { onFilter(item) },
+                        label = { Text(item.label) },
+                    )
                 }
-                IconButton(onClick = { clipboard.setText(AnnotatedString(user.password)) }) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "Скопировать пароль")
+                DropdownSelector(
+                    selected = sort,
+                    options = UserSort.entries.toList(),
+                    optionLabel = { it.label },
+                    leadingIcon = Icons.Default.FilterList,
+                    onSelected = onSort,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BulkActionPanel(
+    count: Int,
+    days: String,
+    onDays: (String) -> Unit,
+    onAction: (UserBulkAction) -> Unit,
+    onClear: () -> Unit,
+) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Выбрано: $count", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onClear) { Text("Снять") }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = days,
+                    onValueChange = onDays,
+                    modifier = Modifier.width(108.dp),
+                    label = { Text("Дней") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                FilledTonalButton(onClick = { onAction(UserBulkAction.SetExpiration) }) {
+                    Icon(Icons.Default.History, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Срок")
                 }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = {}, label = { Text(if (user.connected) "Подключён" else "Не привязан") })
-                if (user.deactivated) AssistChip(onClick = {}, label = { Text("Отключён") }, leadingIcon = { Icon(Icons.Default.Warning, null) })
-                if (user.expired) AssistChip(onClick = {}, label = { Text("Истёк") }, leadingIcon = { Icon(Icons.Default.Warning, null) })
-                if (user.deviceIp.isNotBlank()) AssistChip(onClick = {}, label = { Text(user.deviceIp) })
-            }
-            Text("Трафик: ${formatBytes(user.upBytes)} вверх / ${formatBytes(user.downBytes)} вниз")
-            if (user.vkHash.isNotBlank()) Text("VK: ${user.vkHash}", maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("Порты: ${user.ports}")
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(onClick = { onSetEnabled(user.deactivated) }) {
-                    Icon(Icons.Default.PowerSettingsNew, contentDescription = if (user.deactivated) "Включить" else "Отключить")
-                }
-                IconButton(onClick = onUnbind, enabled = user.connected) {
-                    Icon(Icons.Default.LinkOff, contentDescription = "Отвязать")
-                }
-                IconButton(onClick = onResetTraffic) {
-                    Icon(Icons.Default.RestartAlt, contentDescription = "Сбросить трафик")
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = "Удалить")
-                }
+                BulkButton(Icons.Default.CheckCircle, "Вкл", UserBulkAction.Activate, onAction)
+                BulkButton(Icons.Default.PowerSettingsNew, "Выкл", UserBulkAction.Deactivate, onAction)
+                BulkButton(Icons.Default.RestartAlt, "Трафик", UserBulkAction.ResetTraffic, onAction)
+                BulkButton(Icons.Default.LinkOff, "Отвязать", UserBulkAction.Unbind, onAction)
+                BulkButton(Icons.Default.Delete, "Удалить", UserBulkAction.Delete, onAction)
             }
         }
     }
 }
 
 @Composable
-private fun LogsScreen(lines: List<String>) {
+private fun BulkButton(icon: ImageVector, label: String, action: UserBulkAction, onAction: (UserBulkAction) -> Unit) {
+    OutlinedButton(onClick = { onAction(action) }) {
+        Icon(icon, contentDescription = null)
+        Spacer(Modifier.width(8.dp))
+        Text(label)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun UserCard(
+    user: UserSummary,
+    selected: Boolean,
+    onSelected: (Boolean) -> Unit,
+    onDelete: () -> Unit,
+    onUnbind: () -> Unit,
+    onResetTraffic: () -> Unit,
+    onSetEnabled: (Boolean) -> Unit,
+) {
+    val clipboard = LocalClipboardManager.current
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Checkbox(checked = selected, onCheckedChange = onSelected)
+                Column(Modifier.weight(1f)) {
+                    Text(user.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        user.password,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                FilledIconButton(onClick = { clipboard.setText(AnnotatedString(user.password)) }) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Скопировать пароль")
+                }
+            }
+
+            FlowStatusRow {
+                UserStatusPill(user)
+                if (user.bound) StatusPill(Icons.Default.Devices, "Привязан")
+                if (user.deviceIp.isNotBlank()) StatusPill(Icons.Default.Dns, user.deviceIp)
+                if (user.expired) StatusPill(Icons.Default.Warning, "Истёк")
+                if (user.deactivated) StatusPill(Icons.Default.PowerSettingsNew, "Отключён")
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                InlineMetric(Icons.Default.ArrowUpward, formatBytes(user.upBytes))
+                InlineMetric(Icons.Default.ArrowDownward, formatBytes(user.downBytes))
+                Text(
+                    "Срок: ${expirationLabel(user.expiresAt)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (user.ports.isNotBlank()) StatusPill(Icons.Default.Tune, user.ports)
+                if (user.vkHash.isNotBlank()) StatusPill(Icons.Default.Key, user.vkHash)
+                if (user.lastHandshake > 0) StatusPill(Icons.Default.History, handshakeLabel(user.lastHandshake))
+            }
+
+            HorizontalDivider()
+
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { onSetEnabled(user.deactivated) }) {
+                    Icon(
+                        Icons.Default.PowerSettingsNew,
+                        contentDescription = if (user.deactivated) "Включить" else "Отключить",
+                    )
+                }
+                IconButton(onClick = onUnbind, enabled = user.bound) {
+                    Icon(Icons.Default.LinkOff, contentDescription = "Отвязать")
+                }
+                IconButton(onClick = onResetTraffic) {
+                    Icon(Icons.Default.RestartAlt, contentDescription = "Сбросить трафик")
+                }
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = "Удалить", tint = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun LogsScreen(lines: List<String>, meta: LogsMeta, onLoad: (String, Int) -> Unit) {
+    var source by remember(meta.source) { mutableStateOf(meta.source) }
+    var limit by remember { mutableStateOf(500) }
+    var filter by remember { mutableStateOf("") }
+    val clipboard = LocalClipboardManager.current
+    val filtered = remember(lines, filter) {
+        if (filter.isBlank()) lines else lines.filter { it.contains(filter, ignoreCase = true) }
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text("Логи", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Журналы", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "${meta.title}: ${filtered.size}/${lines.size} строк",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = { onLoad(source, limit) }) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Загрузить")
+                }
+                IconButton(onClick = { clipboard.setText(AnnotatedString(filtered.joinToString("\n"))) }, enabled = filtered.isNotEmpty()) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Скопировать")
+                }
+            }
         }
-        if (lines.isEmpty()) {
-            item { EmptyCard("Лог пуст") }
+        item {
+            Card(
+                shape = RoundedCornerShape(8.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DropdownSelector(
+                            selected = source,
+                            options = logSources.map { it.value },
+                            optionLabel = { value -> logSources.first { it.value == value }.label },
+                            leadingIcon = Icons.Default.Article,
+                            onSelected = {
+                                source = it
+                                onLoad(it, limit)
+                            },
+                        )
+                        DropdownSelector(
+                            selected = limit,
+                            options = listOf(300, 500, 1000, 2000),
+                            optionLabel = { "$it строк" },
+                            leadingIcon = Icons.Default.FilterList,
+                            onSelected = {
+                                limit = it
+                                onLoad(source, it)
+                            },
+                        )
+                    }
+                    OutlinedTextField(
+                        value = filter,
+                        onValueChange = { filter = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Фильтр") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        singleLine = true,
+                    )
+                    if (meta.units.isNotEmpty()) {
+                        FlowStatusRow {
+                            meta.units.forEach { unit ->
+                                HealthPill(unit.unit, unit.active)
+                            }
+                        }
+                    }
+                }
+            }
         }
-        items(lines) { line ->
-            Text(
-                text = line,
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
-            )
+        if (filtered.isEmpty()) {
+            item { EmptyCard("Нет строк журнала") }
         }
+        items(filtered) { line ->
+            LogLine(line)
+        }
+    }
+}
+
+@Composable
+private fun LogLine(line: String) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = line,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+        )
     }
 }
 
@@ -514,6 +1149,7 @@ private fun ServersScreen(
     onDelete: (String) -> Unit,
     onSwitch: (String) -> Unit,
 ) {
+    var pendingDelete by remember { mutableStateOf<ServerProfile?>(null) }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -521,8 +1157,14 @@ private fun ServersScreen(
     ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Серверы", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.weight(1f))
+                Column(Modifier.weight(1f)) {
+                    Text("Серверы", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "${state.servers.count { it.lastStatus == ConnectionStatus.Online }} онлайн · ${state.servers.size} всего",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Button(onClick = onAdd) {
                     Icon(Icons.Default.Add, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
@@ -535,10 +1177,27 @@ private fun ServersScreen(
                 server = server,
                 active = server.id == state.activeServerId,
                 onEdit = { onEdit(server) },
-                onDelete = { onDelete(server.id) },
+                onDelete = { pendingDelete = server },
                 onSwitch = { onSwitch(server.id) },
             )
         }
+    }
+
+    pendingDelete?.let { server ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Удалить сервер") },
+            text = { Text(server.name) },
+            confirmButton = {
+                Button(onClick = {
+                    pendingDelete = null
+                    onDelete(server.id)
+                }) { Text("Удалить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Отмена") }
+            },
+        )
     }
 }
 
@@ -550,22 +1209,39 @@ private fun ServerCard(
     onDelete: () -> Unit,
     onSwitch: () -> Unit,
 ) {
-    Card(shape = RoundedCornerShape(8.dp)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (active) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(
+                    if (server.lastStatus == ConnectionStatus.Online) Icons.Default.Wifi else Icons.Default.Storage,
+                    contentDescription = null,
+                    tint = if (server.lastStatus == ConnectionStatus.Online) Color(0xFF16A34A) else MaterialTheme.colorScheme.primary,
+                )
                 Column(Modifier.weight(1f)) {
                     Text(server.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(server.baseUrl, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (active) Icon(Icons.Default.CheckCircle, contentDescription = "Активный")
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                StatusLabel(server.lastStatus)
-                if (server.version.isNotBlank()) Text("v${server.version}", style = MaterialTheme.typography.labelMedium)
-                if (server.lastCheckedAt > 0) Text(timeLabel(server.lastCheckedAt), style = MaterialTheme.typography.labelSmall)
+            FlowStatusRow {
+                ConnectionStatusChip(server.lastStatus)
+                if (server.version.isNotBlank()) StatusPill(Icons.Default.Security, "v${server.version}")
+                if (server.allowInsecureTls) StatusPill(Icons.Default.Warning, "Self-signed TLS")
+                if (server.lastCheckedAt > 0) StatusPill(Icons.Default.History, timeLabel(server.lastCheckedAt))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                FilledTonalButton(onClick = onSwitch, enabled = !active) { Text("Переключить") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                FilledTonalButton(onClick = onSwitch, enabled = !active) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Активировать")
+                }
+                Spacer(Modifier.weight(1f))
                 IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, contentDescription = "Изменить") }
                 IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Удалить") }
             }
@@ -596,7 +1272,7 @@ private fun ServerDialog(
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("Пароль") },
+                    label = { Text(if (server == null) "Пароль" else "Новый пароль") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                 )
@@ -615,41 +1291,118 @@ private fun ServerDialog(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CreateUserDialog(
     onDismiss: () -> Unit,
-    onCreate: (String, String, String, String, Boolean) -> Unit,
+    onCreateManual: (String, String, String, String, String, Boolean, Boolean) -> Unit,
+    onCreateAuto: (String) -> Unit,
+    onCreateBulk: (Int, String, HashMode, String, String, String, Boolean, Boolean) -> Unit,
 ) {
+    var mode by remember { mutableStateOf(CreateUserMode.Manual) }
     var label by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var vkHash by remember { mutableStateOf("") }
     var ports by remember { mutableStateOf("56000,56001,9000") }
     var days by remember { mutableStateOf("30") }
     var unlimited by remember { mutableStateOf(false) }
+    var disabled by remember { mutableStateOf(false) }
+    var count by remember { mutableStateOf("2") }
+    var hashMode by remember { mutableStateOf(HashMode.Shared) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Новый пользователь") },
+        title = { Text("Пользователи") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(value = label, onValueChange = { label = it }, label = { Text("Метка") }, singleLine = true)
-                OutlinedTextField(value = vkHash, onValueChange = { vkHash = it }, label = { Text("VK-хеш") }, singleLine = true)
-                OutlinedTextField(value = ports, onValueChange = { ports = it }, label = { Text("Порты") }, singleLine = true)
-                OutlinedTextField(
-                    value = days,
-                    onValueChange = { days = it },
-                    label = { Text("Дней") },
-                    singleLine = true,
-                    enabled = !unlimited,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Бессрочно", modifier = Modifier.weight(1f))
-                    Switch(checked = unlimited, onCheckedChange = { unlimited = it })
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 560.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CreateUserMode.entries.forEach { item ->
+                        FilterChip(
+                            selected = mode == item,
+                            onClick = { mode = item },
+                            label = { Text(item.label) },
+                        )
+                    }
+                }
+
+                when (mode) {
+                    CreateUserMode.Manual -> {
+                        OutlinedTextField(value = label, onValueChange = { label = it }, label = { Text("Метка") }, singleLine = true)
+                        OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Пароль") }, singleLine = true)
+                        SharedUserFields(
+                            vkHash = vkHash,
+                            onVkHash = { vkHash = it },
+                            ports = ports,
+                            onPorts = { ports = it },
+                            days = days,
+                            onDays = { days = it },
+                            unlimited = unlimited,
+                            onUnlimited = { unlimited = it },
+                            disabled = disabled,
+                            onDisabled = { disabled = it },
+                        )
+                    }
+                    CreateUserMode.Auto -> {
+                        OutlinedTextField(value = label, onValueChange = { label = it }, label = { Text("Метка") }, singleLine = true)
+                    }
+                    CreateUserMode.Bulk -> {
+                        OutlinedTextField(
+                            value = count,
+                            onValueChange = { count = it },
+                            label = { Text("Количество") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        )
+                        OutlinedTextField(value = label, onValueChange = { label = it }, label = { Text("Префикс метки") }, singleLine = true)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            HashMode.entries.forEach { item ->
+                                FilterChip(
+                                    selected = hashMode == item,
+                                    onClick = { hashMode = item },
+                                    label = { Text(item.label) },
+                                )
+                            }
+                        }
+                        SharedUserFields(
+                            vkHash = vkHash,
+                            onVkHash = { vkHash = it },
+                            ports = ports,
+                            onPorts = { ports = it },
+                            days = days,
+                            onDays = { days = it },
+                            unlimited = unlimited,
+                            onUnlimited = { unlimited = it },
+                            disabled = disabled,
+                            onDisabled = { disabled = it },
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = { onCreate(label, vkHash, ports, days, unlimited) }) { Text("Создать") }
+            Button(
+                onClick = {
+                    when (mode) {
+                        CreateUserMode.Manual -> onCreateManual(label, password, vkHash, ports, days, unlimited, disabled)
+                        CreateUserMode.Auto -> onCreateAuto(label)
+                        CreateUserMode.Bulk -> onCreateBulk(
+                            count.toIntOrNull() ?: 1,
+                            vkHash,
+                            hashMode,
+                            label,
+                            ports,
+                            days,
+                            unlimited,
+                            disabled,
+                        )
+                    }
+                },
+            ) { Text(if (mode == CreateUserMode.Bulk) "Создать пакет" else "Создать") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Отмена") }
@@ -658,46 +1411,263 @@ private fun CreateUserDialog(
 }
 
 @Composable
-private fun EmptyCard(text: String) {
-    Card(shape = RoundedCornerShape(8.dp)) {
-        Text(text, modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
+private fun SharedUserFields(
+    vkHash: String,
+    onVkHash: (String) -> Unit,
+    ports: String,
+    onPorts: (String) -> Unit,
+    days: String,
+    onDays: (String) -> Unit,
+    unlimited: Boolean,
+    onUnlimited: (Boolean) -> Unit,
+    disabled: Boolean,
+    onDisabled: (Boolean) -> Unit,
+) {
+    OutlinedTextField(value = vkHash, onValueChange = onVkHash, label = { Text("VK-хеш") }, singleLine = true)
+    OutlinedTextField(value = ports, onValueChange = onPorts, label = { Text("Порты") }, singleLine = true)
+    OutlinedTextField(
+        value = days,
+        onValueChange = onDays,
+        label = { Text("Дней") },
+        singleLine = true,
+        enabled = !unlimited,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+    )
+    ToggleRow(label = "Бессрочно", checked = unlimited, onChecked = onUnlimited)
+    ToggleRow(label = "Создать отключённым", checked = disabled, onChecked = onDisabled)
+}
+
+@Composable
+private fun ToggleRow(label: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChecked)
     }
 }
 
 @Composable
-private fun StatusChip(active: Boolean) {
-    AssistChip(
-        onClick = {},
-        label = { Text(if (active) "Сервис активен" else "Сервис остановлен") },
-        leadingIcon = {
-            Icon(if (active) Icons.Default.CheckCircle else Icons.Default.Warning, contentDescription = null)
+private fun GeneratedLinksDialog(links: GeneratedLinks, onDismiss: () -> Unit) {
+    val clipboard = LocalClipboardManager.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(links.title) },
+        text = {
+            OutlinedTextField(
+                value = links.links,
+                onValueChange = {},
+                readOnly = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 120.dp, max = 260.dp),
+                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            )
+        },
+        confirmButton = {
+            Button(onClick = { clipboard.setText(AnnotatedString(links.links)) }) {
+                Icon(Icons.Default.ContentCopy, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Копировать")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Закрыть") }
         },
     )
 }
 
 @Composable
-private fun StatusLabel(status: ConnectionStatus) {
-    val text = when (status) {
-        ConnectionStatus.Unknown -> "Не проверен"
-        ConnectionStatus.Online -> "Онлайн"
-        ConnectionStatus.Offline -> "Оффлайн"
-        ConnectionStatus.AuthRequired -> "Нужен пароль"
+private fun EmptyCard(text: String) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Text(text, modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
     }
-    AssistChip(onClick = {}, label = { Text(text) })
+}
+
+@Composable
+private fun SectionTitle(icon: ImageVector, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+        Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FlowStatusRow(content: @Composable () -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        content()
+    }
+}
+
+@Composable
+private fun StatusPill(icon: ImageVector, text: String) {
+    AssistChip(
+        onClick = {},
+        label = { Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
+    )
+}
+
+@Composable
+private fun HealthPill(label: String, ok: Boolean) {
+    AssistChip(
+        onClick = {},
+        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        leadingIcon = {
+            Icon(
+                if (ok) Icons.Default.CheckCircle else Icons.Default.Warning,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = if (ok) Color(0xFF16A34A) else MaterialTheme.colorScheme.tertiary,
+            )
+        },
+    )
+}
+
+@Composable
+private fun ConnectionStatusChip(status: ConnectionStatus) {
+    val (text, icon, tint) = when (status) {
+        ConnectionStatus.Unknown -> Triple("Не проверен", Icons.Default.Warning, MaterialTheme.colorScheme.tertiary)
+        ConnectionStatus.Online -> Triple("Онлайн", Icons.Default.CheckCircle, Color(0xFF16A34A))
+        ConnectionStatus.Offline -> Triple("Оффлайн", Icons.Default.WifiOff, MaterialTheme.colorScheme.error)
+        ConnectionStatus.AuthRequired -> Triple("Пароль", Icons.Default.Key, MaterialTheme.colorScheme.tertiary)
+    }
+    AssistChip(
+        onClick = {},
+        label = { Text(text) },
+        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = tint) },
+    )
+}
+
+@Composable
+private fun UserStatusPill(user: UserSummary) {
+    val text = when {
+        user.connected -> "Онлайн"
+        user.bound -> "Неактивен"
+        else -> "Свободен"
+    }
+    val icon = if (user.connected) Icons.Default.Wifi else Icons.Default.WifiOff
+    AssistChip(
+        onClick = {},
+        label = { Text(text) },
+        leadingIcon = {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = if (user.connected) Color(0xFF16A34A) else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+    )
+}
+
+@Composable
+private fun InlineMetric(icon: ImageVector, value: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+        Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun <T> DropdownSelector(
+    selected: T,
+    options: List<T>,
+    optionLabel: (T) -> String,
+    leadingIcon: ImageVector,
+    onSelected: (T) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { expanded = true }) {
+            Icon(leadingIcon, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(optionLabel(selected), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { item ->
+                DropdownMenuItem(
+                    text = { Text(optionLabel(item)) },
+                    onClick = {
+                        expanded = false
+                        onSelected(item)
+                    },
+                )
+            }
+        }
+    }
+}
+
+private data class Metric(val label: String, val value: String, val icon: ImageVector)
+
+private data class LogSource(val value: String, val label: String)
+
+private enum class UserFilter(val label: String) {
+    All("Все"),
+    Online("Онлайн"),
+    Bound("Привязанные"),
+    Disabled("Отключённые"),
+    Expired("Истёкшие"),
+}
+
+private enum class UserSort(val label: String) {
+    Name("Имя"),
+    Traffic("Трафик"),
+    Status("Статус"),
 }
 
 private data class TabItem(
     val tab: AppTab,
     val label: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val icon: ImageVector,
 )
 
+private val logSources = listOf(
+    LogSource("wdtt", "WDTT"),
+    LogSource("panel", "Панель"),
+    LogSource("nginx", "Nginx"),
+    LogSource("installer", "Установщик"),
+)
+
+private val CreateUserMode.label: String
+    get() = when (this) {
+        CreateUserMode.Manual -> "Один"
+        CreateUserMode.Auto -> "Авто"
+        CreateUserMode.Bulk -> "Пакет"
+    }
+
+private val HashMode.label: String
+    get() = when (this) {
+        HashMode.Shared -> "Общий хеш"
+        HashMode.Rotate -> "По очереди"
+    }
+
 private fun tabItems(): List<TabItem> = listOf(
-    TabItem(AppTab.Dashboard, "Обзор", Icons.Default.Home),
-    TabItem(AppTab.Users, "Пользователи", Icons.Default.Groups),
-    TabItem(AppTab.Logs, "Логи", Icons.Default.Article),
+    TabItem(AppTab.Dashboard, "Обзор", Icons.Default.Dashboard),
+    TabItem(AppTab.Users, "Люди", Icons.Default.Groups),
+    TabItem(AppTab.Logs, "Логи", Icons.Default.Terminal),
     TabItem(AppTab.Servers, "Серверы", Icons.Default.Storage),
 )
+
+private fun UserSummary.matches(query: String): Boolean {
+    val normalized = query.trim()
+    if (normalized.isBlank()) return true
+    return listOf(displayName, password, deviceIp, vkHash, ports)
+        .any { it.contains(normalized, ignoreCase = true) }
+}
+
+private fun bulkActionTitle(action: UserBulkAction): String =
+    when (action) {
+        UserBulkAction.Activate -> "Включить пользователей"
+        UserBulkAction.Deactivate -> "Отключить пользователей"
+        UserBulkAction.SetExpiration -> "Изменить срок"
+        UserBulkAction.ResetTraffic -> "Сбросить трафик"
+        UserBulkAction.Unbind -> "Отвязать устройства"
+        UserBulkAction.Delete -> "Удалить пользователей"
+    }
 
 private fun formatBytes(value: Long): String {
     val units = listOf("B", "KB", "MB", "GB", "TB")
@@ -707,8 +1677,37 @@ private fun formatBytes(value: Long): String {
         amount /= 1024
         index += 1
     }
-    return if (index == 0) "${value} ${units[index]}" else "%.1f %s".format(amount, units[index])
+    return if (index == 0) "${value} ${units[index]}" else "%.1f %s".format(Locale.US, amount, units[index])
+}
+
+private fun expirationLabel(timestamp: Long): String {
+    if (timestamp <= 0L) return "Бессрочно"
+    return dateLabel(timestamp)
+}
+
+private fun handshakeLabel(timestamp: Long): String =
+    "HS ${dateLabel(timestamp)}"
+
+private fun dateLabel(timestamp: Long): String {
+    val millis = if (timestamp < 10_000_000_000L) timestamp * 1000 else timestamp
+    return SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(millis))
 }
 
 private fun timeLabel(timestamp: Long): String =
     SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(timestamp))
+
+private fun percentFraction(value: String): Float =
+    value
+        .replace("%", "")
+        .replace(",", ".")
+        .trim()
+        .toFloatOrNull()
+        ?.div(100f)
+        ?.coerceIn(0f, 1f)
+        ?: 0f
+
+private fun percentLabel(value: String): String {
+    val clean = value.trim()
+    if (clean.isBlank() || clean == "-") return "-"
+    return if (clean.endsWith("%")) clean else "$clean%"
+}
