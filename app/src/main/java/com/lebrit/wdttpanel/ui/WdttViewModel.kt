@@ -503,6 +503,63 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
         postUserAction("users/update", payload, "Пользователь обновлён")
     }
 
+    fun updateUsersBulk(
+        users: List<UserSummary>,
+        vkHash: String,
+        ports: String,
+        days: String,
+        changeExpiration: Boolean,
+        unlimited: Boolean,
+    ) {
+        val targets = users.distinctBy { it.password }
+        if (targets.isEmpty()) {
+            _state.update { it.copy(error = "Выберите пользователей") }
+            return
+        }
+        if (vkHash.isBlank() && ports.isBlank() && !changeExpiration) {
+            _state.update { it.copy(error = "Укажите, что изменить") }
+            return
+        }
+        val profile = _state.value.activeServer ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(loading = true, error = null) }
+            runCatching {
+                val authed = ensureAuthenticated(profile)
+                targets.forEach { user ->
+                    val payload = buildJsonObject {
+                        put("current_password", user.password)
+                        put("password", user.password)
+                        if (vkHash.isNotBlank()) {
+                            put("vk_hash", vkHash)
+                        }
+                        if (ports.isNotBlank()) {
+                            put("ports", ports)
+                        }
+                        if (changeExpiration) {
+                            if (unlimited) {
+                                put("unlimited", true)
+                            } else {
+                                put("days", days.toIntOrNull() ?: 30)
+                            }
+                        }
+                    }
+                    api.post(authed, "users/update", payload)
+                }
+                targets.size
+            }.onSuccess { count ->
+                _state.update { it.copy(loading = false, message = "Обновлено пользователей: $count") }
+                refresh()
+            }.onFailure { error ->
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        error = error.message ?: "Не удалось обновить пользователей",
+                    )
+                }
+            }
+        }
+    }
+
     fun deleteUser(user: UserSummary) {
         postUserAction("users/delete", passwordPayload(user.password), "Пользователь удалён")
     }

@@ -284,12 +284,14 @@ private fun WdttApp(state: AppUiState, viewModel: WdttViewModel) {
                 )
                 state.selectedTab == AppTab.Users -> UsersScreen(
                     users = state.users,
+                    savedHashes = state.vkHashes,
                     onCreate = { showCreateUser = true },
                     onDelete = viewModel::deleteUser,
                     onUnbind = viewModel::unbindUser,
                     onResetTraffic = viewModel::resetTraffic,
                     onSetEnabled = viewModel::setUserEnabled,
                     onBulk = viewModel::bulkUserAction,
+                    onBulkEdit = viewModel::updateUsersBulk,
                     onEdit = { editingUser = it },
                 )
                 state.selectedTab == AppTab.Profiles -> ProfilesScreen(
@@ -365,6 +367,7 @@ private fun WdttApp(state: AppUiState, viewModel: WdttViewModel) {
     }
     if (showCreateUser) {
         CreateUserDialog(
+            savedHashes = state.vkHashes,
             onDismiss = { showCreateUser = false },
             onCreateManual = { label, password, hash, ports, days, unlimited, disabled ->
                 showCreateUser = false
@@ -383,6 +386,7 @@ private fun WdttApp(state: AppUiState, viewModel: WdttViewModel) {
     editingUser?.let { user ->
         EditUserDialog(
             user = user,
+            savedHashes = state.vkHashes,
             onDismiss = { editingUser = null },
             onSave = { label, password, hash, ports, days, unlimited, disabled ->
                 editingUser = null
@@ -752,12 +756,14 @@ private fun HealthPanel(overview: OverviewSummary?) {
 @Composable
 private fun UsersScreen(
     users: List<UserSummary>,
+    savedHashes: List<String>,
     onCreate: () -> Unit,
     onDelete: (UserSummary) -> Unit,
     onUnbind: (UserSummary) -> Unit,
     onResetTraffic: (UserSummary) -> Unit,
     onSetEnabled: (UserSummary, Boolean) -> Unit,
     onBulk: (UserBulkAction, List<String>, String) -> Unit,
+    onBulkEdit: (List<UserSummary>, String, String, String, Boolean, Boolean) -> Unit,
     onEdit: (UserSummary) -> Unit,
 ) {
     var search by remember { mutableStateOf("") }
@@ -766,6 +772,7 @@ private fun UsersScreen(
     var selectedPasswords by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pendingDelete by remember { mutableStateOf<UserSummary?>(null) }
     var pendingBulk by remember { mutableStateOf<UserBulkAction?>(null) }
+    var showBulkEdit by remember { mutableStateOf(false) }
     var bulkDays by remember { mutableStateOf("30") }
 
     LaunchedEffect(users) {
@@ -836,6 +843,7 @@ private fun UsersScreen(
                     days = bulkDays,
                     onDays = { bulkDays = it },
                     onAction = { pendingBulk = it },
+                    onEdit = { showBulkEdit = true },
                     onClear = { selectedPasswords = emptySet() },
                 )
             }
@@ -917,6 +925,19 @@ private fun UsersScreen(
             },
         )
     }
+    if (showBulkEdit) {
+        val selectedUsers = users.filter { it.password in selectedPasswords }
+        BulkEditUsersDialog(
+            users = selectedUsers,
+            savedHashes = savedHashes,
+            onDismiss = { showBulkEdit = false },
+            onSave = { vkHash, ports, days, changeExpiration, unlimited ->
+                showBulkEdit = false
+                selectedPasswords = emptySet()
+                onBulkEdit(selectedUsers, vkHash, ports, days, changeExpiration, unlimited)
+            },
+        )
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -970,6 +991,7 @@ private fun BulkActionPanel(
     days: String,
     onDays: (String) -> Unit,
     onAction: (UserBulkAction) -> Unit,
+    onEdit: () -> Unit,
     onClear: () -> Unit,
 ) {
     Card(
@@ -998,6 +1020,11 @@ private fun BulkActionPanel(
                 }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onEdit) {
+                    Icon(Icons.Default.Edit, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Редакт.")
+                }
                 BulkButton(Icons.Default.CheckCircle, "Вкл", UserBulkAction.Activate, onAction)
                 BulkButton(Icons.Default.PowerSettingsNew, "Выкл", UserBulkAction.Deactivate, onAction)
                 BulkButton(Icons.Default.RestartAlt, "Трафик", UserBulkAction.ResetTraffic, onAction)
@@ -1888,6 +1915,7 @@ private fun ServerDialog(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CreateUserDialog(
+    savedHashes: List<String>,
     onDismiss: () -> Unit,
     onCreateManual: (String, String, String, String, String, Boolean, Boolean) -> Unit,
     onCreateAuto: (String) -> Unit,
@@ -1931,6 +1959,7 @@ private fun CreateUserDialog(
                         SharedUserFields(
                             vkHash = vkHash,
                             onVkHash = { vkHash = it },
+                            savedHashes = savedHashes,
                             ports = ports,
                             onPorts = { ports = it },
                             days = days,
@@ -1965,6 +1994,7 @@ private fun CreateUserDialog(
                         SharedUserFields(
                             vkHash = vkHash,
                             onVkHash = { vkHash = it },
+                            savedHashes = savedHashes,
                             ports = ports,
                             onPorts = { ports = it },
                             days = days,
@@ -2008,6 +2038,7 @@ private fun CreateUserDialog(
 @Composable
 private fun EditUserDialog(
     user: UserSummary,
+    savedHashes: List<String>,
     onDismiss: () -> Unit,
     onSave: (String, String, String, String, String, Boolean, Boolean) -> Unit,
 ) {
@@ -2034,6 +2065,7 @@ private fun EditUserDialog(
                 SharedUserFields(
                     vkHash = vkHash,
                     onVkHash = { vkHash = it },
+                    savedHashes = savedHashes,
                     ports = ports,
                     onPorts = { ports = it },
                     days = days,
@@ -2057,10 +2089,80 @@ private fun EditUserDialog(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BulkEditUsersDialog(
+    users: List<UserSummary>,
+    savedHashes: List<String>,
+    onDismiss: () -> Unit,
+    onSave: (String, String, String, Boolean, Boolean) -> Unit,
+) {
+    var vkHash by remember { mutableStateOf("") }
+    var ports by remember { mutableStateOf("") }
+    var changeExpiration by remember { mutableStateOf(false) }
+    var days by remember { mutableStateOf("30") }
+    var unlimited by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Редактировать выбранных") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 560.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    "Пользователей: ${users.size}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(value = vkHash, onValueChange = { vkHash = it }, label = { Text("VK-хеш") }, singleLine = true)
+                if (savedHashes.isNotEmpty()) {
+                    FlowStatusRow {
+                        savedHashes.forEach { hash ->
+                            FilterChip(
+                                selected = splitHashes(vkHash).contains(hash),
+                                onClick = { vkHash = toggleHash(vkHash, hash) },
+                                label = { Text(hash, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                leadingIcon = { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            )
+                        }
+                    }
+                }
+                OutlinedTextField(value = ports, onValueChange = { ports = it }, label = { Text("Порты") }, singleLine = true)
+                ToggleRow(label = "Изменить срок", checked = changeExpiration, onChecked = { changeExpiration = it })
+                OutlinedTextField(
+                    value = days,
+                    onValueChange = { days = it },
+                    label = { Text("Дней") },
+                    singleLine = true,
+                    enabled = changeExpiration && !unlimited,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                ToggleRow(label = "Бессрочно", checked = unlimited, onChecked = { unlimited = it })
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(vkHash, ports, days, changeExpiration, unlimited) },
+                enabled = users.isNotEmpty() && (vkHash.isNotBlank() || ports.isNotBlank() || changeExpiration),
+            ) {
+                Text("Сохранить")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Отмена") }
+        },
+    )
+}
+
 @Composable
 private fun SharedUserFields(
     vkHash: String,
     onVkHash: (String) -> Unit,
+    savedHashes: List<String> = emptyList(),
     ports: String,
     onPorts: (String) -> Unit,
     days: String,
@@ -2072,6 +2174,18 @@ private fun SharedUserFields(
     disabledLabel: String = "Создать отключённым",
 ) {
     OutlinedTextField(value = vkHash, onValueChange = onVkHash, label = { Text("VK-хеш") }, singleLine = true)
+    if (savedHashes.isNotEmpty()) {
+        FlowStatusRow {
+            savedHashes.forEach { hash ->
+                FilterChip(
+                    selected = splitHashes(vkHash).contains(hash),
+                    onClick = { onVkHash(toggleHash(vkHash, hash)) },
+                    label = { Text(hash, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                )
+            }
+        }
+    }
     OutlinedTextField(value = ports, onValueChange = onPorts, label = { Text("Порты") }, singleLine = true)
     OutlinedTextField(
         value = days,
@@ -2325,6 +2439,25 @@ private fun UserSummary.matches(query: String): Boolean {
     if (normalized.isBlank()) return true
     return listOf(displayName, password, deviceIp, vkHash, ports)
         .any { it.contains(normalized, ignoreCase = true) }
+}
+
+private fun splitHashes(value: String): List<String> =
+    value
+        .replace(",", " ")
+        .split(Regex("\\s+"))
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+
+private fun toggleHash(current: String, hash: String): String {
+    val hashes = splitHashes(current).toMutableList()
+    if (hashes.remove(hash)) {
+        return hashes.joinToString(",")
+    }
+    if (hashes.size < 4) {
+        hashes.add(hash)
+    }
+    return hashes.joinToString(",")
 }
 
 private fun bulkActionTitle(action: UserBulkAction): String =
