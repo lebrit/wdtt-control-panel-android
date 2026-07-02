@@ -19,6 +19,7 @@ import com.lebrit.wdttpanel.model.QwdttSubscription
 import com.lebrit.wdttpanel.model.ServerProfile
 import com.lebrit.wdttpanel.model.ServiceUnitStatus
 import com.lebrit.wdttpanel.model.StoredState
+import com.lebrit.wdttpanel.model.TelegramSettings
 import com.lebrit.wdttpanel.model.UserBulkAction
 import com.lebrit.wdttpanel.model.UserSummary
 import java.net.URI
@@ -87,6 +88,7 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
                 val subscription = runCatching { parseSubscription(api.qwdttSubscription(authed)) }
                     .getOrElse { localSubscription(authed, users) }
                 val hashes = runCatching { parseVkHashes(api.vkHashes(authed)) }.getOrDefault(_state.value.vkHashes)
+                val telegram = runCatching { parseTelegramSettings(api.telegram(authed)) }.getOrDefault(_state.value.telegram)
                 val latency = now() - startedAt
                 val checked = authed.copy(lastStatus = ConnectionStatus.Online, lastCheckedAt = now(), lastLatencyMs = latency)
                 replaceAndPersist(checked)
@@ -99,6 +101,7 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
                         logsMeta = logsMeta,
                         qwdttSubscription = subscription,
                         vkHashes = hashes,
+                        telegram = telegram,
                         error = null,
                     )
                 }
@@ -169,6 +172,95 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
             val root = result as? JsonObject ?: return@postAction
             _state.update { it.copy(vkHashes = parseVkHashes(root)) }
         }
+    }
+
+    fun exportVkHashes() {
+        val profile = _state.value.activeServer ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(loading = true, error = null) }
+            runCatching {
+                val authed = ensureAuthenticated(profile)
+                val root = api.vkHashesExport(authed)
+                val title = root.text("name", "wdtt-vk-hashes.json")
+                val content = root.text("content")
+                val count = root.int("count")
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        generatedLinks = GeneratedLinks(title, content),
+                        message = "Экспортировано VK-хешей: $count",
+                    )
+                }
+            }.onFailure { error ->
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        error = error.message ?: "Не удалось экспортировать VK-хеши",
+                    )
+                }
+            }
+        }
+    }
+
+    fun importVkHashes(content: String) {
+        val value = content.trim()
+        if (value.isBlank()) {
+            _state.update { it.copy(error = "Вставьте JSON библиотеки VK-хешей") }
+            return
+        }
+        val profile = _state.value.activeServer ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(loading = true, error = null) }
+            runCatching {
+                val authed = ensureAuthenticated(profile)
+                val root = api.vkHashesImport(authed, value)
+                val imported = root.int("imported")
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        vkHashes = parseVkHashes(root),
+                        message = "Импортировано новых VK-хешей: $imported",
+                    )
+                }
+            }.onFailure { error ->
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        error = error.message ?: "Не удалось импортировать VK-хеши",
+                    )
+                }
+            }
+        }
+    }
+
+    fun loadTelegramSettings() {
+        val profile = _state.value.activeServer ?: return
+        viewModelScope.launch {
+            runCatching {
+                val authed = ensureAuthenticated(profile)
+                parseTelegramSettings(api.telegram(authed))
+            }.onSuccess { settings ->
+                _state.update { it.copy(telegram = settings) }
+            }.onFailure { error ->
+                _state.update { it.copy(error = error.message ?: "Не удалось загрузить Telegram") }
+            }
+        }
+    }
+
+    fun saveTelegramSettings(enabled: Boolean, adminId: String, botToken: String) {
+        val payload = buildJsonObject {
+            put("enabled", enabled)
+            put("admin_id", adminId)
+            put("bot_token", botToken)
+        }
+        postAction("telegram/save", payload, "Настройки Telegram сохранены") { result, _ ->
+            val root = result as? JsonObject ?: return@postAction
+            _state.update { it.copy(telegram = parseTelegramSettings(root)) }
+        }
+    }
+
+    fun testTelegramSettings() {
+        postAction("telegram/test", JsonObject(emptyMap()), "Тестовое сообщение отправлено")
     }
 
     fun importProfiles(raw: String) {
@@ -592,6 +684,15 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun parseVkHashes(root: JsonObject): List<String> =
         root.array("hashes").mapNotNull { it.asTextOrNull() }.distinct()
+
+    private fun parseTelegramSettings(root: JsonObject): TelegramSettings =
+        TelegramSettings(
+            enabled = root.bool("enabled"),
+            adminId = root.text("admin_id"),
+            botTokenSet = root.bool("bot_token_set"),
+            botTokenHint = root.text("bot_token_hint"),
+            serviceActive = root.bool("service_active"),
+        )
 
     private fun parseSubscription(root: JsonObject): QwdttSubscription =
         QwdttSubscription(

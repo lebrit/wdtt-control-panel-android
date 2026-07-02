@@ -77,6 +77,17 @@ class PanelApiClient {
     suspend fun vkHashes(profile: ServerProfile): JsonObject =
         request(profile = profile, route = "vk-hashes").jsonObject
 
+    suspend fun vkHashesExport(profile: ServerProfile): JsonObject =
+        request(profile = profile, route = "vk-hashes/export").jsonObject
+
+    suspend fun vkHashesImport(profile: ServerProfile, content: String): JsonObject {
+        val payload = buildJsonObject { put("content", content) }
+        return request(profile = profile, route = "vk-hashes/import", method = "POST", payload = payload).jsonObject
+    }
+
+    suspend fun telegram(profile: ServerProfile): JsonObject =
+        request(profile = profile, route = "telegram").jsonObject
+
     suspend fun qwdttSubscription(profile: ServerProfile): JsonObject =
         request(profile = profile, route = "qwdtt/subscription").jsonObject
 

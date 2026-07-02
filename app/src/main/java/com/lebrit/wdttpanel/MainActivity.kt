@@ -296,6 +296,16 @@ private fun WdttApp(state: AppUiState, viewModel: WdttViewModel) {
                     onLoadHashes = viewModel::loadVkHashes,
                     onAddHashes = viewModel::addVkHashes,
                     onDeleteHash = viewModel::deleteVkHash,
+                    onExportHashes = viewModel::exportVkHashes,
+                    onImportHashes = viewModel::importVkHashes,
+                )
+                state.selectedTab == AppTab.Settings -> SettingsScreen(
+                    state = state,
+                    onLoadTelegram = viewModel::loadTelegramSettings,
+                    onSaveTelegram = viewModel::saveTelegramSettings,
+                    onTestTelegram = viewModel::testTelegramSettings,
+                    onExportHashes = viewModel::exportVkHashes,
+                    onImportHashes = viewModel::importVkHashes,
                 )
                 state.selectedTab == AppTab.Logs -> LogsScreen(
                     lines = state.logs,
@@ -1084,6 +1094,8 @@ private fun ProfilesScreen(
     onLoadHashes: () -> Unit,
     onAddHashes: (String) -> Unit,
     onDeleteHash: (String) -> Unit,
+    onExportHashes: () -> Unit,
+    onImportHashes: (String) -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
     var showImport by remember { mutableStateOf(false) }
@@ -1140,6 +1152,8 @@ private fun ProfilesScreen(
                     hashInput = ""
                 },
                 onDelete = onDeleteHash,
+                onExport = onExportHashes,
+                onImport = onImportHashes,
             )
         }
         if (profiles.isEmpty()) {
@@ -1169,6 +1183,172 @@ private fun ProfilesScreen(
         QrDialog(
             profile = profile,
             onDismiss = { qrProfile = null },
+        )
+    }
+}
+
+@Composable
+private fun SettingsScreen(
+    state: AppUiState,
+    onLoadTelegram: () -> Unit,
+    onSaveTelegram: (Boolean, String, String) -> Unit,
+    onTestTelegram: () -> Unit,
+    onExportHashes: () -> Unit,
+    onImportHashes: (String) -> Unit,
+) {
+    LaunchedEffect(state.activeServerId) {
+        if (state.activeServer != null) onLoadTelegram()
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Column {
+                Text("Настройки", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                Text(
+                    state.activeServer?.name ?: "Нет активного сервера",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        item {
+            TelegramSettingsCard(
+                settings = state.telegram,
+                onRefresh = onLoadTelegram,
+                onSave = onSaveTelegram,
+                onTest = onTestTelegram,
+            )
+        }
+        item {
+            VkHashTransferCard(
+                count = state.vkHashes.size,
+                onExport = onExportHashes,
+                onImport = onImportHashes,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TelegramSettingsCard(
+    settings: com.lebrit.wdttpanel.model.TelegramSettings,
+    onRefresh: () -> Unit,
+    onSave: (Boolean, String, String) -> Unit,
+    onTest: () -> Unit,
+) {
+    var enabled by remember(settings.enabled) { mutableStateOf(settings.enabled) }
+    var adminId by remember(settings.adminId) { mutableStateOf(settings.adminId) }
+    var botToken by remember(settings.botTokenSet, settings.botTokenHint) { mutableStateOf("") }
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    SectionTitle(Icons.Default.Tune, "Telegram-бот WDTT")
+                    Text(
+                        if (settings.enabled) "Бот включён для Admin ID ${settings.adminId}" else "Бот выключен",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = onRefresh) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Обновить")
+                }
+            }
+            ToggleRow(label = "Включить Telegram-бота", checked = enabled, onChecked = { enabled = it })
+            OutlinedTextField(
+                value = adminId,
+                onValueChange = { adminId = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Admin ID") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+            OutlinedTextField(
+                value = botToken,
+                onValueChange = { botToken = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Bot Token") },
+                placeholder = {
+                    Text(if (settings.botTokenSet) "Сохранён: ${settings.botTokenHint}" else "123456:ABC...")
+                },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+            )
+            FlowStatusRow {
+                HealthPill("Token", settings.botTokenSet)
+                HealthPill("WDTT", settings.serviceActive)
+                HealthPill("Бот", settings.enabled)
+            }
+            FlowStatusRow {
+                Button(onClick = { onSave(enabled, adminId.trim(), botToken.trim()) }) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Сохранить")
+                }
+                OutlinedButton(
+                    onClick = onTest,
+                    enabled = settings.enabled && settings.botTokenSet && settings.adminId.isNotBlank(),
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Тест")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VkHashTransferCard(
+    count: Int,
+    onExport: () -> Unit,
+    onImport: (String) -> Unit,
+) {
+    val clipboard = LocalClipboardManager.current
+    var showImport by remember { mutableStateOf(false) }
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionTitle(Icons.Default.Key, "Перенос VK-хешей")
+            Text(
+                "$count хешей в библиотеке активного сервера",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowStatusRow {
+                FilledTonalButton(onClick = onExport) {
+                    Icon(Icons.Default.ArrowUpward, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Экспорт")
+                }
+                OutlinedButton(onClick = { showImport = true }) {
+                    Icon(Icons.Default.ArrowDownward, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Импорт")
+                }
+            }
+        }
+    }
+    if (showImport) {
+        ImportTextDialog(
+            title = "Импорт VK-хешей",
+            label = "JSON из другой WDTT Panel",
+            clipboardText = clipboard.getText()?.text.orEmpty(),
+            onDismiss = { showImport = false },
+            onImport = {
+                showImport = false
+                onImport(it)
+            },
         )
     }
 }
@@ -1224,7 +1404,11 @@ private fun VkHashPanel(
     onValue: (String) -> Unit,
     onAdd: () -> Unit,
     onDelete: (String) -> Unit,
+    onExport: () -> Unit,
+    onImport: (String) -> Unit,
 ) {
+    val clipboard = LocalClipboardManager.current
+    var showImport by remember { mutableStateOf(false) }
     Card(
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -1240,10 +1424,22 @@ private fun VkHashPanel(
                 singleLine = false,
                 minLines = 2,
             )
-            Button(onClick = onAdd, enabled = value.isNotBlank()) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Добавить")
+            FlowStatusRow {
+                Button(onClick = onAdd, enabled = value.isNotBlank()) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Добавить")
+                }
+                FilledTonalButton(onClick = onExport) {
+                    Icon(Icons.Default.ArrowUpward, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Экспорт")
+                }
+                OutlinedButton(onClick = { showImport = true }) {
+                    Icon(Icons.Default.ArrowDownward, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Импорт")
+                }
             }
             FlowStatusRow {
                 hashes.forEach { hash ->
@@ -1255,6 +1451,18 @@ private fun VkHashPanel(
                 }
             }
         }
+    }
+    if (showImport) {
+        ImportTextDialog(
+            title = "Импорт VK-хешей",
+            label = "JSON из экспорта WDTT Panel",
+            clipboardText = clipboard.getText()?.text.orEmpty(),
+            onDismiss = { showImport = false },
+            onImport = {
+                showImport = false
+                onImport(it)
+            },
+        )
     }
 }
 
@@ -1317,6 +1525,42 @@ private fun ImportProfilesDialog(
         },
         confirmButton = {
             Button(onClick = { onImport(text) }, enabled = text.isNotBlank()) { Text("Импорт") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Отмена") }
+        },
+    )
+}
+
+@Composable
+private fun ImportTextDialog(
+    title: String,
+    label: String,
+    clipboardText: String,
+    onDismiss: () -> Unit,
+    onImport: (String) -> Unit,
+) {
+    var text by remember { mutableStateOf(clipboardText) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 180.dp, max = 320.dp),
+                label = { Text(label) },
+                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            )
+        },
+        confirmButton = {
+            Button(onClick = { onImport(text) }, enabled = text.isNotBlank()) {
+                Icon(Icons.Default.ArrowDownward, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Импорт")
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Отмена") }
@@ -1964,6 +2208,7 @@ private fun tabItems(): List<TabItem> = listOf(
     TabItem(AppTab.Dashboard, "Обзор", Icons.Default.Dashboard),
     TabItem(AppTab.Users, "Люди", Icons.Default.Groups),
     TabItem(AppTab.Profiles, "Профили", Icons.Default.Key),
+    TabItem(AppTab.Settings, "Настр.", Icons.Default.Tune),
     TabItem(AppTab.Logs, "Логи", Icons.Default.Terminal),
     TabItem(AppTab.Servers, "Серверы", Icons.Default.Storage),
 )

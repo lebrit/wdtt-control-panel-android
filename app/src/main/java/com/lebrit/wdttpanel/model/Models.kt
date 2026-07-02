@@ -105,6 +105,14 @@ data class VkHashLibrary(
     val hashes: List<String> = emptyList(),
 )
 
+data class TelegramSettings(
+    val enabled: Boolean = false,
+    val adminId: String = "",
+    val botTokenSet: Boolean = false,
+    val botTokenHint: String = "",
+    val serviceActive: Boolean = false,
+)
+
 data class ServiceUnitStatus(
     val unit: String,
     val active: Boolean,
@@ -145,6 +153,7 @@ enum class AppTab {
     Dashboard,
     Users,
     Profiles,
+    Settings,
     Logs,
     Servers,
 }
@@ -159,6 +168,7 @@ data class AppUiState(
     val logs: List<String> = emptyList(),
     val logsMeta: LogsMeta = LogsMeta(),
     val vkHashes: List<String> = emptyList(),
+    val telegram: TelegramSettings = TelegramSettings(),
     val qwdttSubscription: QwdttSubscription? = null,
     val importedProfiles: List<QwdttProfile> = emptyList(),
     val generatedLinks: GeneratedLinks? = null,
