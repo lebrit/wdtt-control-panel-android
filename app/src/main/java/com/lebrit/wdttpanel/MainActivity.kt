@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
@@ -112,6 +113,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -201,6 +203,7 @@ private fun WdttApp(state: AppUiState, viewModel: WdttViewModel) {
     var showServerDialog by remember { mutableStateOf(false) }
     var editingServer by remember { mutableStateOf<ServerProfile?>(null) }
     var showCreateUser by remember { mutableStateOf(false) }
+    var editingUser by remember { mutableStateOf<UserSummary?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(state.message, state.error) {
@@ -287,6 +290,7 @@ private fun WdttApp(state: AppUiState, viewModel: WdttViewModel) {
                     onResetTraffic = viewModel::resetTraffic,
                     onSetEnabled = viewModel::setUserEnabled,
                     onBulk = viewModel::bulkUserAction,
+                    onEdit = { editingUser = it },
                 )
                 state.selectedTab == AppTab.Profiles -> ProfilesScreen(
                     state = state,
@@ -298,6 +302,7 @@ private fun WdttApp(state: AppUiState, viewModel: WdttViewModel) {
                     onDeleteHash = viewModel::deleteVkHash,
                     onExportHashes = viewModel::exportVkHashes,
                     onImportHashes = viewModel::importVkHashes,
+                    onEditUser = { editingUser = it },
                 )
                 state.selectedTab == AppTab.Settings -> SettingsScreen(
                     state = state,
@@ -372,6 +377,16 @@ private fun WdttApp(state: AppUiState, viewModel: WdttViewModel) {
             onCreateBulk = { count, hash, hashMode, labelPrefix, ports, days, unlimited, disabled ->
                 showCreateUser = false
                 viewModel.createUsersBulk(count, hash, hashMode, labelPrefix, ports, days, unlimited, disabled)
+            },
+        )
+    }
+    editingUser?.let { user ->
+        EditUserDialog(
+            user = user,
+            onDismiss = { editingUser = null },
+            onSave = { label, password, hash, ports, days, unlimited, disabled ->
+                editingUser = null
+                viewModel.updateUser(user, label, password, hash, ports, days, unlimited, disabled)
             },
         )
     }
@@ -743,6 +758,7 @@ private fun UsersScreen(
     onResetTraffic: (UserSummary) -> Unit,
     onSetEnabled: (UserSummary, Boolean) -> Unit,
     onBulk: (UserBulkAction, List<String>, String) -> Unit,
+    onEdit: (UserSummary) -> Unit,
 ) {
     var search by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(UserFilter.All) }
@@ -862,6 +878,7 @@ private fun UsersScreen(
                 onUnbind = { onUnbind(user) },
                 onResetTraffic = { onResetTraffic(user) },
                 onSetEnabled = { enabled -> onSetEnabled(user, enabled) },
+                onEdit = { onEdit(user) },
             )
         }
     }
@@ -1010,6 +1027,7 @@ private fun UserCard(
     onUnbind: () -> Unit,
     onResetTraffic: () -> Unit,
     onSetEnabled: (Boolean) -> Unit,
+    onEdit: () -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
     Card(
@@ -1056,8 +1074,8 @@ private fun UserCard(
             }
 
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (user.ports.isNotBlank()) StatusPill(Icons.Default.Tune, user.ports)
-                if (user.vkHash.isNotBlank()) StatusPill(Icons.Default.Key, user.vkHash)
+                if (user.ports.isNotBlank()) CopyablePill(Icons.Default.Tune, user.ports)
+                if (user.vkHash.isNotBlank()) CopyablePill(Icons.Default.Key, user.vkHash)
                 if (user.lastHandshake > 0) StatusPill(Icons.Default.History, handshakeLabel(user.lastHandshake))
             }
 
@@ -1075,6 +1093,9 @@ private fun UserCard(
                 }
                 IconButton(onClick = onResetTraffic) {
                     Icon(Icons.Default.RestartAlt, contentDescription = "Сбросить трафик")
+                }
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Default.Edit, contentDescription = "Редактировать")
                 }
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick = onDelete) {
@@ -1096,6 +1117,7 @@ private fun ProfilesScreen(
     onDeleteHash: (String) -> Unit,
     onExportHashes: () -> Unit,
     onImportHashes: (String) -> Unit,
+    onEditUser: (UserSummary) -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
     var showImport by remember { mutableStateOf(false) }
@@ -1165,6 +1187,7 @@ private fun ProfilesScreen(
                 user = userByPassword[profile.password],
                 onExport = { format -> onExportProfile(profile, format) },
                 onQr = { qrProfile = profile },
+                onEditUser = onEditUser,
             )
         }
     }
@@ -1408,6 +1431,7 @@ private fun VkHashPanel(
     onImport: (String) -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     var showImport by remember { mutableStateOf(false) }
     Card(
         shape = RoundedCornerShape(8.dp),
@@ -1443,11 +1467,19 @@ private fun VkHashPanel(
             }
             FlowStatusRow {
                 hashes.forEach { hash ->
-                    AssistChip(
-                        onClick = { onDelete(hash) },
-                        label = { Text(hash, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        AssistChip(
+                            onClick = {
+                                clipboard.setText(AnnotatedString(hash))
+                                Toast.makeText(context, "Скопировано", Toast.LENGTH_SHORT).show()
+                            },
+                            label = { Text(hash, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        )
+                        IconButton(onClick = { onDelete(hash) }, modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.Default.Delete, contentDescription = "Удалить VK-хеш", tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
                 }
             }
         }
@@ -1472,6 +1504,7 @@ private fun QwdttProfileCard(
     user: UserSummary?,
     onExport: (String) -> Unit,
     onQr: () -> Unit,
+    onEditUser: (UserSummary) -> Unit,
 ) {
     Card(
         shape = RoundedCornerShape(8.dp),
@@ -1489,7 +1522,7 @@ private fun QwdttProfileCard(
             FlowStatusRow {
                 StatusPill(Icons.Default.Tune, "${profile.workers} потоков")
                 StatusPill(Icons.Default.Storage, "порт ${profile.port}")
-                if (profile.hashes.isNotBlank()) StatusPill(Icons.Default.Key, profile.hashes)
+                if (profile.hashes.isNotBlank()) CopyablePill(Icons.Default.Key, profile.hashes)
                 if (user != null) StatusPill(Icons.Default.Speed, formatBytes(user.totalBytes))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1497,6 +1530,11 @@ private fun QwdttProfileCard(
                 OutlinedButton(onClick = { onExport("wdtt") }) { Text("wdtt://") }
                 IconButton(onClick = { onExport("json") }) { Icon(Icons.Default.Article, contentDescription = "JSON") }
                 IconButton(onClick = onQr) { Icon(Icons.Default.Security, contentDescription = "QR") }
+                if (user != null) {
+                    IconButton(onClick = { onEditUser(user) }) {
+                        Icon(Icons.Default.Edit, contentDescription = "Редактировать пользователя")
+                    }
+                }
             }
         }
     }
@@ -1966,6 +2004,59 @@ private fun CreateUserDialog(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun EditUserDialog(
+    user: UserSummary,
+    onDismiss: () -> Unit,
+    onSave: (String, String, String, String, String, Boolean, Boolean) -> Unit,
+) {
+    var label by remember(user.password) { mutableStateOf(user.label) }
+    var password by remember(user.password) { mutableStateOf(user.password) }
+    var vkHash by remember(user.password) { mutableStateOf(user.vkHash) }
+    var ports by remember(user.password) { mutableStateOf(user.ports.ifBlank { "56000,56001,9000" }) }
+    var unlimited by remember(user.password) { mutableStateOf(user.expiresAt <= 0L) }
+    var days by remember(user.password) { mutableStateOf(daysUntilExpiration(user.expiresAt)) }
+    var disabled by remember(user.password) { mutableStateOf(user.deactivated) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Редактировать пользователя") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 560.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedTextField(value = label, onValueChange = { label = it }, label = { Text("Метка") }, singleLine = true)
+                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Пароль") }, singleLine = true)
+                SharedUserFields(
+                    vkHash = vkHash,
+                    onVkHash = { vkHash = it },
+                    ports = ports,
+                    onPorts = { ports = it },
+                    days = days,
+                    onDays = { days = it },
+                    unlimited = unlimited,
+                    onUnlimited = { unlimited = it },
+                    disabled = disabled,
+                    onDisabled = { disabled = it },
+                    disabledLabel = "Отключён",
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSave(label, password, vkHash, ports, days, unlimited, disabled) }) {
+                Text("Сохранить")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Отмена") }
+        },
+    )
+}
+
 @Composable
 private fun SharedUserFields(
     vkHash: String,
@@ -1978,6 +2069,7 @@ private fun SharedUserFields(
     onUnlimited: (Boolean) -> Unit,
     disabled: Boolean,
     onDisabled: (Boolean) -> Unit,
+    disabledLabel: String = "Создать отключённым",
 ) {
     OutlinedTextField(value = vkHash, onValueChange = onVkHash, label = { Text("VK-хеш") }, singleLine = true)
     OutlinedTextField(value = ports, onValueChange = onPorts, label = { Text("Порты") }, singleLine = true)
@@ -1990,7 +2082,7 @@ private fun SharedUserFields(
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
     )
     ToggleRow(label = "Бессрочно", checked = unlimited, onChecked = onUnlimited)
-    ToggleRow(label = "Создать отключённым", checked = disabled, onChecked = onDisabled)
+    ToggleRow(label = disabledLabel, checked = disabled, onChecked = onDisabled)
 }
 
 @Composable
@@ -2064,6 +2156,21 @@ private fun StatusPill(icon: ImageVector, text: String) {
         onClick = {},
         label = { Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
+    )
+}
+
+@Composable
+private fun CopyablePill(icon: ImageVector, text: String) {
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    AssistChip(
+        onClick = {
+            clipboard.setText(AnnotatedString(text))
+            Toast.makeText(context, "Скопировано", Toast.LENGTH_SHORT).show()
+        },
+        label = { Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
+        trailingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp)) },
     )
 }
 
@@ -2244,6 +2351,12 @@ private fun formatBytes(value: Long): String {
 private fun expirationLabel(timestamp: Long): String {
     if (timestamp <= 0L) return "Бессрочно"
     return dateLabel(timestamp)
+}
+
+private fun daysUntilExpiration(timestamp: Long): String {
+    if (timestamp <= 0L) return "30"
+    val secondsLeft = timestamp - System.currentTimeMillis() / 1000L
+    return maxOf(1L, (secondsLeft + 86399L) / 86400L).toString()
 }
 
 private fun handshakeLabel(timestamp: Long): String =

@@ -477,6 +477,32 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateUser(
+        user: UserSummary,
+        label: String,
+        password: String,
+        vkHash: String,
+        ports: String,
+        days: String,
+        unlimited: Boolean,
+        disabled: Boolean,
+    ) {
+        val payload = buildJsonObject {
+            put("current_password", user.password)
+            put("password", password.ifBlank { user.password })
+            put("label", label)
+            put("vk_hash", vkHash)
+            put("ports", ports.ifBlank { "56000,56001,9000" })
+            put("is_deactivated", disabled)
+            if (unlimited) {
+                put("unlimited", true)
+            } else {
+                put("days", days.toIntOrNull() ?: 30)
+            }
+        }
+        postUserAction("users/update", payload, "Пользователь обновлён")
+    }
+
     fun deleteUser(user: UserSummary) {
         postUserAction("users/delete", passwordPayload(user.password), "Пользователь удалён")
     }
