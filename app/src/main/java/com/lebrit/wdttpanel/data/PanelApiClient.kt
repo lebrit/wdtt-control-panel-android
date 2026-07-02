@@ -74,6 +74,12 @@ class PanelApiClient {
     suspend fun logs(profile: ServerProfile, source: String = "wdtt", limit: Int = 300): JsonObject =
         request(profile = profile, route = "logs?source=$source&limit=$limit").jsonObject
 
+    suspend fun vkHashes(profile: ServerProfile): JsonObject =
+        request(profile = profile, route = "vk-hashes").jsonObject
+
+    suspend fun qwdttSubscription(profile: ServerProfile): JsonObject =
+        request(profile = profile, route = "qwdtt/subscription").jsonObject
+
     suspend fun post(profile: ServerProfile, route: String, payload: JsonObject = JsonObject(emptyMap())): JsonElement =
         request(profile = profile, route = route, method = "POST", payload = payload)
 

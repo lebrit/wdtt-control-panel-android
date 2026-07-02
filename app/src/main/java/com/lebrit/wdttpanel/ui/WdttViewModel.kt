@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.lebrit.wdttpanel.data.ApiException
 import com.lebrit.wdttpanel.data.PanelApiClient
+import com.lebrit.wdttpanel.data.ProfileTools
 import com.lebrit.wdttpanel.data.SecureServerStore
 import com.lebrit.wdttpanel.model.AppTab
 import com.lebrit.wdttpanel.model.AppUiState
@@ -13,6 +14,8 @@ import com.lebrit.wdttpanel.model.GeneratedLinks
 import com.lebrit.wdttpanel.model.HashMode
 import com.lebrit.wdttpanel.model.LogsMeta
 import com.lebrit.wdttpanel.model.OverviewSummary
+import com.lebrit.wdttpanel.model.QwdttProfile
+import com.lebrit.wdttpanel.model.QwdttSubscription
 import com.lebrit.wdttpanel.model.ServerProfile
 import com.lebrit.wdttpanel.model.ServiceUnitStatus
 import com.lebrit.wdttpanel.model.StoredState
@@ -74,13 +77,18 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
             val result = runCatching {
+                val startedAt = now()
                 val authed = ensureAuthenticated(profile)
                 val overview = parseOverview(api.overview(authed))
                 val users = parseUsers(api.users(authed))
                 val logsRoot = api.logs(authed, source = _state.value.logsMeta.source)
                 val logs = parseLogs(logsRoot)
                 val logsMeta = parseLogsMeta(logsRoot)
-                val checked = authed.copy(lastStatus = ConnectionStatus.Online, lastCheckedAt = now())
+                val subscription = runCatching { parseSubscription(api.qwdttSubscription(authed)) }
+                    .getOrElse { localSubscription(authed, users) }
+                val hashes = runCatching { parseVkHashes(api.vkHashes(authed)) }.getOrDefault(_state.value.vkHashes)
+                val latency = now() - startedAt
+                val checked = authed.copy(lastStatus = ConnectionStatus.Online, lastCheckedAt = now(), lastLatencyMs = latency)
                 replaceAndPersist(checked)
                 _state.update {
                     it.copy(
@@ -89,6 +97,8 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
                         users = users,
                         logs = logs,
                         logsMeta = logsMeta,
+                        qwdttSubscription = subscription,
+                        vkHashes = hashes,
                         error = null,
                     )
                 }
@@ -128,6 +138,75 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
             }
+        }
+    }
+
+    fun loadVkHashes() {
+        val profile = _state.value.activeServer ?: return
+        viewModelScope.launch {
+            runCatching {
+                val authed = ensureAuthenticated(profile)
+                parseVkHashes(api.vkHashes(authed))
+            }.onSuccess { hashes ->
+                _state.update { it.copy(vkHashes = hashes) }
+            }.onFailure { error ->
+                _state.update { it.copy(error = error.message ?: "Не удалось загрузить VK-хеши") }
+            }
+        }
+    }
+
+    fun addVkHashes(value: String) {
+        val payload = buildJsonObject { put("hashes", value) }
+        postAction("vk-hashes", payload, "VK-хеши добавлены") { result, _ ->
+            val root = result as? JsonObject ?: return@postAction
+            _state.update { it.copy(vkHashes = parseVkHashes(root)) }
+        }
+    }
+
+    fun deleteVkHash(value: String) {
+        val payload = buildJsonObject { put("hash", value) }
+        postAction("vk-hashes/delete", payload, "VK-хеш удалён") { result, _ ->
+            val root = result as? JsonObject ?: return@postAction
+            _state.update { it.copy(vkHashes = parseVkHashes(root)) }
+        }
+    }
+
+    fun importProfiles(raw: String) {
+        runCatching { ProfileTools.parseMany(raw) }
+            .onSuccess { profiles ->
+                if (profiles.isEmpty()) {
+                    _state.update { it.copy(error = "Профили не найдены") }
+                } else {
+                    _state.update {
+                        it.copy(
+                            importedProfiles = (it.importedProfiles + profiles).distinctBy { profile -> profile.qwdttKey() },
+                            message = "Импортировано профилей: ${profiles.size}",
+                        )
+                    }
+                }
+            }
+            .onFailure { error ->
+                _state.update { it.copy(error = error.message ?: "Не удалось импортировать профиль") }
+            }
+    }
+
+    fun exportProfile(profile: QwdttProfile, format: String) {
+        val value = when (format) {
+            "wdtt" -> ProfileTools.wdttLink(profile)
+            "json" -> ProfileTools.profileJson(profile)
+            "file" -> ProfileTools.qwdttFile(profile)
+            else -> ProfileTools.qwdttLink(profile)
+        }
+        _state.update { it.copy(generatedLinks = GeneratedLinks(exportTitle(format), value)) }
+    }
+
+    fun exportSubscription() {
+        val subscription = _state.value.qwdttSubscription ?: localSubscription(
+            _state.value.activeServer ?: return,
+            _state.value.users,
+        )
+        _state.update {
+            it.copy(generatedLinks = GeneratedLinks("qWDTT JSON-подписка", ProfileTools.subscriptionJson(subscription)))
         }
     }
 
@@ -470,6 +549,8 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
                 expired = obj.bool("expired"),
                 connected = obj.bool("connected"),
                 lastHandshake = obj.long("last_handshake"),
+                lastUploadAt = obj.long("last_upload_at"),
+                lastDownloadAt = obj.long("last_download_at"),
             )
         }
 
@@ -509,8 +590,50 @@ class WdttViewModel(application: Application) : AndroidViewModel(application) {
             ).joinToString(":")
         }
 
+    private fun parseVkHashes(root: JsonObject): List<String> =
+        root.array("hashes").mapNotNull { it.asTextOrNull() }.distinct()
+
+    private fun parseSubscription(root: JsonObject): QwdttSubscription =
+        QwdttSubscription(
+            name = root.text("subscriptionName", "WDTT"),
+            description = root.text("description"),
+            updatedAt = root.text("updatedAt"),
+            trafficUsedMb = root.double("trafficUsedMb"),
+            profiles = root.array("profiles").mapNotNull { item ->
+                val obj = item as? JsonObject ?: return@mapNotNull null
+                QwdttProfile(
+                    name = obj.text("name"),
+                    peer = obj.text("peer"),
+                    hashes = obj.text("hashes"),
+                    workers = obj.int("workers", 16),
+                    port = obj.int("port", 9000),
+                    password = obj.text("password"),
+                    source = root.text("subscriptionName", "server"),
+                )
+            },
+        )
+
+    private fun localSubscription(server: ServerProfile, users: List<UserSummary>): QwdttSubscription =
+        QwdttSubscription(
+            name = "WDTT ${server.name}",
+            description = server.baseUrl,
+            updatedAt = java.time.Instant.now().toString(),
+            trafficUsedMb = users.sumOf { it.totalBytes }.toDouble() / 1024.0 / 1024.0,
+            profiles = users.map { ProfileTools.userProfile(server, it) },
+        )
+
+    private fun exportTitle(format: String): String =
+        when (format) {
+            "wdtt" -> "WDTT-ссылка"
+            "json" -> "qWDTT JSON"
+            "file" -> ".qwdtt"
+            else -> "qWDTT-ссылка"
+        }
+
     private fun now(): Long = System.currentTimeMillis()
 }
+
+private fun QwdttProfile.qwdttKey(): String = "$peer|$password|$hashes"
 
 private fun JsonObject.obj(key: String): JsonObject = objOrNull(key) ?: JsonObject(emptyMap())
 
@@ -529,6 +652,9 @@ private fun JsonObject.long(key: String, default: Long = 0): Long =
 
 private fun JsonObject.bool(key: String, default: Boolean = false): Boolean =
     this[key]?.jsonPrimitive?.booleanOrNull ?: default
+
+private fun JsonObject.double(key: String, default: Double = 0.0): Double =
+    this[key]?.jsonPrimitive?.content?.toDoubleOrNull() ?: default
 
 private fun JsonElement?.asTextOrNull(): String? =
     when (this) {

@@ -14,6 +14,7 @@ data class ServerProfile(
     val version: String = "",
     val lastStatus: ConnectionStatus = ConnectionStatus.Unknown,
     val lastCheckedAt: Long = 0L,
+    val lastLatencyMs: Long = 0L,
 )
 
 @Serializable
@@ -66,6 +67,8 @@ data class UserSummary(
     val expired: Boolean,
     val connected: Boolean = false,
     val lastHandshake: Long = 0L,
+    val lastUploadAt: Long = 0L,
+    val lastDownloadAt: Long = 0L,
 ) {
     val displayName: String
         get() = label.ifBlank { password }
@@ -75,7 +78,32 @@ data class UserSummary(
 
     val totalBytes: Long
         get() = downBytes + upBytes
+
+    val lastActivityAt: Long
+        get() = maxOf(lastHandshake, lastUploadAt, lastDownloadAt)
 }
+
+data class QwdttProfile(
+    val name: String,
+    val peer: String,
+    val hashes: String,
+    val workers: Int,
+    val port: Int,
+    val password: String,
+    val source: String = "local",
+)
+
+data class QwdttSubscription(
+    val name: String = "WDTT",
+    val description: String = "",
+    val updatedAt: String = "",
+    val trafficUsedMb: Double = 0.0,
+    val profiles: List<QwdttProfile> = emptyList(),
+)
+
+data class VkHashLibrary(
+    val hashes: List<String> = emptyList(),
+)
 
 data class ServiceUnitStatus(
     val unit: String,
@@ -116,6 +144,7 @@ enum class CreateUserMode {
 enum class AppTab {
     Dashboard,
     Users,
+    Profiles,
     Logs,
     Servers,
 }
@@ -129,6 +158,9 @@ data class AppUiState(
     val users: List<UserSummary> = emptyList(),
     val logs: List<String> = emptyList(),
     val logsMeta: LogsMeta = LogsMeta(),
+    val vkHashes: List<String> = emptyList(),
+    val qwdttSubscription: QwdttSubscription? = null,
+    val importedProfiles: List<QwdttProfile> = emptyList(),
     val generatedLinks: GeneratedLinks? = null,
     val message: String? = null,
     val error: String? = null,

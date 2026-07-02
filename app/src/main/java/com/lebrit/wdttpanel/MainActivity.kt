@@ -1,9 +1,13 @@
 package com.lebrit.wdttpanel
 
+import android.Manifest
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -105,6 +109,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -116,6 +121,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.lebrit.wdttpanel.data.NotificationHelper
+import com.lebrit.wdttpanel.data.PanelSyncWorker
+import com.lebrit.wdttpanel.data.ProfileTools
 import com.lebrit.wdttpanel.model.AppTab
 import com.lebrit.wdttpanel.model.AppUiState
 import com.lebrit.wdttpanel.model.ConnectionStatus
@@ -124,6 +132,7 @@ import com.lebrit.wdttpanel.model.GeneratedLinks
 import com.lebrit.wdttpanel.model.HashMode
 import com.lebrit.wdttpanel.model.LogsMeta
 import com.lebrit.wdttpanel.model.OverviewSummary
+import com.lebrit.wdttpanel.model.QwdttProfile
 import com.lebrit.wdttpanel.model.ServerProfile
 import com.lebrit.wdttpanel.model.UserBulkAction
 import com.lebrit.wdttpanel.model.UserSummary
@@ -135,14 +144,30 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        NotificationHelper.ensureChannel(this)
+        PanelSyncWorker.schedule(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 100)
+        }
+        val launchImport = importTextFromIntent(intent)
         setContent {
             WdttTheme {
                 val viewModel: WdttViewModel = viewModel()
                 val state by viewModel.state.collectAsStateWithLifecycle()
+                LaunchedEffect(launchImport) {
+                    if (!launchImport.isNullOrBlank()) viewModel.importProfiles(launchImport)
+                }
                 WdttApp(state = state, viewModel = viewModel)
             }
         }
     }
+
+    private fun importTextFromIntent(intent: Intent?): String? =
+        when (intent?.action) {
+            Intent.ACTION_VIEW -> intent.dataString
+            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
+            else -> null
+        }
 }
 
 @Composable
@@ -262,6 +287,15 @@ private fun WdttApp(state: AppUiState, viewModel: WdttViewModel) {
                     onResetTraffic = viewModel::resetTraffic,
                     onSetEnabled = viewModel::setUserEnabled,
                     onBulk = viewModel::bulkUserAction,
+                )
+                state.selectedTab == AppTab.Profiles -> ProfilesScreen(
+                    state = state,
+                    onExportProfile = viewModel::exportProfile,
+                    onExportSubscription = viewModel::exportSubscription,
+                    onImport = viewModel::importProfiles,
+                    onLoadHashes = viewModel::loadVkHashes,
+                    onAddHashes = viewModel::addVkHashes,
+                    onDeleteHash = viewModel::deleteVkHash,
                 )
                 state.selectedTab == AppTab.Logs -> LogsScreen(
                     lines = state.logs,
@@ -503,6 +537,9 @@ private fun ServerHero(
                 if ((activeServer?.lastCheckedAt ?: 0L) > 0) {
                     StatusPill(Icons.Default.Refresh, timeLabel(activeServer?.lastCheckedAt ?: 0L))
                 }
+                if ((activeServer?.lastLatencyMs ?: 0L) > 0) {
+                    StatusPill(Icons.Default.Speed, "${activeServer?.lastLatencyMs} ms")
+                }
             }
 
             if (servers.size > 1) {
@@ -720,6 +757,9 @@ private fun UsersScreen(
                     UserFilter.Bound -> user.bound
                     UserFilter.Disabled -> user.deactivated
                     UserFilter.Expired -> user.expired
+                    UserFilter.Expiring -> user.expiresAt in 1..(System.currentTimeMillis() / 1000 + 7 * 86400)
+                    UserFilter.Inactive -> user.lastActivityAt == 0L || user.lastActivityAt < (System.currentTimeMillis() / 1000 - 7 * 86400)
+                    UserFilter.HeavyTraffic -> user.totalBytes >= 1024L * 1024L * 1024L
                 }
             }
             .let { list ->
@@ -1033,6 +1073,278 @@ private fun UserCard(
             }
         }
     }
+}
+
+@Composable
+private fun ProfilesScreen(
+    state: AppUiState,
+    onExportProfile: (QwdttProfile, String) -> Unit,
+    onExportSubscription: () -> Unit,
+    onImport: (String) -> Unit,
+    onLoadHashes: () -> Unit,
+    onAddHashes: (String) -> Unit,
+    onDeleteHash: (String) -> Unit,
+) {
+    val clipboard = LocalClipboardManager.current
+    var showImport by remember { mutableStateOf(false) }
+    var qrProfile by remember { mutableStateOf<QwdttProfile?>(null) }
+    var hashInput by remember { mutableStateOf("") }
+    LaunchedEffect(state.activeServerId) {
+        if (state.activeServer != null) onLoadHashes()
+    }
+    val localProfiles = state.activeServer?.let { server ->
+        state.users.map { ProfileTools.userProfile(server, it) }
+    }.orEmpty()
+    val subscription = state.qwdttSubscription
+    val profiles = (subscription?.profiles ?: localProfiles) + state.importedProfiles
+    val userByPassword = state.users.associateBy { it.password }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("qWDTT профили", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "${profiles.size} профилей · ${state.vkHashes.size} VK-хешей",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = { showImport = true }) {
+                    Icon(Icons.Default.Add, contentDescription = "Импорт")
+                }
+            }
+        }
+        item {
+            SubscriptionCard(
+                subscription = subscription,
+                profileCount = profiles.size,
+                endpoint = state.activeServer?.let { "${it.baseUrl.trimEnd('/')}/api/v1/qwdtt/subscription" }.orEmpty(),
+                onExport = onExportSubscription,
+                onCopyEndpoint = { endpoint ->
+                    clipboard.setText(AnnotatedString(endpoint))
+                },
+            )
+        }
+        item {
+            VkHashPanel(
+                hashes = state.vkHashes,
+                value = hashInput,
+                onValue = { hashInput = it },
+                onAdd = {
+                    onAddHashes(hashInput)
+                    hashInput = ""
+                },
+                onDelete = onDeleteHash,
+            )
+        }
+        if (profiles.isEmpty()) {
+            item { EmptyCard("Профилей пока нет") }
+        }
+        items(profiles, key = { "${it.peer}|${it.password}|${it.hashes}" }) { profile ->
+            QwdttProfileCard(
+                profile = profile,
+                user = userByPassword[profile.password],
+                onExport = { format -> onExportProfile(profile, format) },
+                onQr = { qrProfile = profile },
+            )
+        }
+    }
+
+    if (showImport) {
+        ImportProfilesDialog(
+            clipboardText = clipboard.getText()?.text.orEmpty(),
+            onDismiss = { showImport = false },
+            onImport = {
+                showImport = false
+                onImport(it)
+            },
+        )
+    }
+    qrProfile?.let { profile ->
+        QrDialog(
+            profile = profile,
+            onDismiss = { qrProfile = null },
+        )
+    }
+}
+
+@Composable
+private fun SubscriptionCard(
+    subscription: com.lebrit.wdttpanel.model.QwdttSubscription?,
+    profileCount: Int,
+    endpoint: String,
+    onExport: () -> Unit,
+    onCopyEndpoint: (String) -> Unit,
+) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SectionTitle(Icons.Default.Article, "JSON-подписка")
+            Text(
+                subscription?.name ?: "Локальная подписка",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            FlowStatusRow {
+                StatusPill(Icons.Default.Groups, "$profileCount профилей")
+                if ((subscription?.trafficUsedMb ?: 0.0) > 0) StatusPill(Icons.Default.Speed, "%.1f MB".format(Locale.US, subscription?.trafficUsedMb))
+                if (!subscription?.updatedAt.isNullOrBlank()) StatusPill(Icons.Default.History, subscription?.updatedAt.orEmpty())
+            }
+            if (endpoint.isNotBlank()) {
+                Text(endpoint, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilledTonalButton(onClick = onExport) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("JSON")
+                }
+                OutlinedButton(onClick = { onCopyEndpoint(endpoint) }, enabled = endpoint.isNotBlank()) {
+                    Icon(Icons.Default.LinkOff, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("URL")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VkHashPanel(
+    hashes: List<String>,
+    value: String,
+    onValue: (String) -> Unit,
+    onAdd: () -> Unit,
+    onDelete: (String) -> Unit,
+) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SectionTitle(Icons.Default.Key, "VK-хеши")
+            OutlinedTextField(
+                value = value,
+                onValueChange = onValue,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Хеши или vk.com/call/join/...") },
+                singleLine = false,
+                minLines = 2,
+            )
+            Button(onClick = onAdd, enabled = value.isNotBlank()) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Добавить")
+            }
+            FlowStatusRow {
+                hashes.forEach { hash ->
+                    AssistChip(
+                        onClick = { onDelete(hash) },
+                        label = { Text(hash, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QwdttProfileCard(
+    profile: QwdttProfile,
+    user: UserSummary?,
+    onExport: (String) -> Unit,
+    onQr: () -> Unit,
+) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(profile.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(profile.peer, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                }
+                user?.let { UserStatusPill(it) }
+            }
+            FlowStatusRow {
+                StatusPill(Icons.Default.Tune, "${profile.workers} потоков")
+                StatusPill(Icons.Default.Storage, "порт ${profile.port}")
+                if (profile.hashes.isNotBlank()) StatusPill(Icons.Default.Key, profile.hashes)
+                if (user != null) StatusPill(Icons.Default.Speed, formatBytes(user.totalBytes))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                FilledTonalButton(onClick = { onExport("qwdtt") }) { Text("qwdtt://") }
+                OutlinedButton(onClick = { onExport("wdtt") }) { Text("wdtt://") }
+                IconButton(onClick = { onExport("json") }) { Icon(Icons.Default.Article, contentDescription = "JSON") }
+                IconButton(onClick = onQr) { Icon(Icons.Default.Security, contentDescription = "QR") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportProfilesDialog(
+    clipboardText: String,
+    onDismiss: () -> Unit,
+    onImport: (String) -> Unit,
+) {
+    var text by remember { mutableStateOf(clipboardText) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Импорт профилей") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 180.dp, max = 320.dp),
+                label = { Text("wdtt://, qwdtt://, JSON, Base64 или QR-текст") },
+                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            )
+        },
+        confirmButton = {
+            Button(onClick = { onImport(text) }, enabled = text.isNotBlank()) { Text("Импорт") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Отмена") }
+        },
+    )
+}
+
+@Composable
+private fun QrDialog(profile: QwdttProfile, onDismiss: () -> Unit) {
+    val link = remember(profile) { ProfileTools.qwdttLink(profile) }
+    val bitmap = remember(link) { ProfileTools.qrBitmap(link) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(profile.name) },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = "QR",
+                    modifier = Modifier.size(260.dp),
+                )
+                Text(link, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Закрыть") }
+        },
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -1611,6 +1923,9 @@ private enum class UserFilter(val label: String) {
     Bound("Привязанные"),
     Disabled("Отключённые"),
     Expired("Истёкшие"),
+    Expiring("Истекают"),
+    Inactive("Без активности"),
+    HeavyTraffic("Много трафика"),
 }
 
 private enum class UserSort(val label: String) {
@@ -1648,6 +1963,7 @@ private val HashMode.label: String
 private fun tabItems(): List<TabItem> = listOf(
     TabItem(AppTab.Dashboard, "Обзор", Icons.Default.Dashboard),
     TabItem(AppTab.Users, "Люди", Icons.Default.Groups),
+    TabItem(AppTab.Profiles, "Профили", Icons.Default.Key),
     TabItem(AppTab.Logs, "Логи", Icons.Default.Terminal),
     TabItem(AppTab.Servers, "Серверы", Icons.Default.Storage),
 )
